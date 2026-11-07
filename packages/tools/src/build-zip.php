@@ -80,7 +80,7 @@ if (is_file("$stage/composer.json")) {
     }
     // Verbose: composer's own output too (no --quiet).
     $quiet = ps_verbose() ? '' : ' --quiet';
-    $cmd = 'composer install --no-dev --optimize-autoloader --no-interaction --no-progress' . $quiet . ' --working-dir=' . escapeshellarg($stage);
+    $cmd = 'composer install --no-dev --no-scripts --optimize-autoloader --no-interaction --no-progress' . $quiet . ' --working-dir=' . escapeshellarg($stage);
     ps_vcmd($cmd, (string) getcwd());
     $start = microtime(true);
     passthru($cmd, $code);
@@ -91,8 +91,33 @@ if (is_file("$stage/composer.json")) {
     }
 
     $composer = json_decode((string) file_get_contents("$stage/composer.json"), true);
-    $scopes = $composer['extra']['prestashopheaven']['scope'] ?? [];
+    $installed = shippedPackages($stage);
+    $build = array_values(array_filter(array_keys($installed), static fn (string $n): bool => str_starts_with($n, 'prestashopheaven/build-')));
+    if ($build !== []) {
+        fwrite(STDERR, 'A build package is in the release zip (PKG-03): ' . implode(', ', $build) . ". Move it to require-dev.\n");
+        exit(1);
+    }
+    // Every shipped package is scoped (DEP-07, package collection): the namespaces listed in composer.json plus those
+    // of every installed package, so a module never forgets one. The prefix defaults to <module namespace>\Vendor.
+    $scopes = array_values(array_unique(array_map(
+        static fn ($ns): string => trim((string) $ns, '\\'),
+        array_merge((array) ($composer['extra']['prestashopheaven']['scope'] ?? []), ...array_values($installed))
+    )));
+    // A namespace inside another scoped one (PrestaShopHeaven\Runtime\Kit in PrestaShopHeaven\Runtime) is covered already.
+    $scopes = array_values(array_filter($scopes, static function (string $ns) use ($scopes): bool {
+        foreach ($scopes as $other) {
+            if ($other !== $ns && str_starts_with($ns, $other . '\\')) {
+                return false;
+            }
+        }
+
+        return $ns !== '';
+    }));
     $prefix = (string) ($composer['extra']['prestashopheaven']['scope-prefix'] ?? '');
+    if ($prefix === '' && $scopes !== []) {
+        $own = (string) array_key_first((array) ($composer['autoload']['psr-4'] ?? []));
+        $prefix = $own !== '' ? rtrim($own, '\\') . '\\Vendor' : '';
+    }
     ps_vlog('build: scope ' . ($scopes !== [] && $prefix !== '' ? implode(', ', $scopes) . " under $prefix" : 'none (no extra.prestashopheaven.scope / scope-prefix in composer.json)'));
     if ($scopes !== [] && $prefix !== '') {
         $changed = scopeNamespaces($stage, $prefix, $scopes);
@@ -198,6 +223,29 @@ if (is_file(__DIR__ . '/dod.php')) {
 echo $zipPath . "\n";
 
 // ---------------------------------------------------------------------------
+
+/**
+ * The packages composer installed in the stage (no-dev: what ships in the zip), each with its PSR-4 namespaces without
+ * the trailing backslash.
+ *
+ * @return array<string, list<string>> package name => namespaces
+ */
+function shippedPackages(string $stage): array
+{
+    $data = json_decode((string) @file_get_contents("$stage/vendor/composer/installed.json"), true);
+    $packages = [];
+    foreach ((array) ($data['packages'] ?? $data ?? []) as $package) {
+        if (!is_array($package) || !is_string($package['name'] ?? null)) {
+            continue;
+        }
+        $packages[$package['name']] = array_values(array_filter(array_map(
+            static fn ($ns): string => rtrim((string) $ns, '\\'),
+            array_keys((array) ($package['autoload']['psr-4'] ?? []))
+        )));
+    }
+
+    return $packages;
+}
 
 /**
  * Prefixes the given namespaces with $prefix in every code and config file of the stage

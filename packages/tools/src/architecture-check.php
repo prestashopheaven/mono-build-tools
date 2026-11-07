@@ -220,6 +220,10 @@ function archRuleFor(string $layer, string $kind, string $fqn, string $ns, strin
         if ($layer === 'application' && str_starts_with($fqn, 'Psr\\')) {
             return '';
         }
+        // The shared kernel of the package collection (pure PHP value objects, PKG-09) is allowed in both layers.
+        if (str_starts_with($fqn, 'PrestaShopHeaven\\Runtime\\SharedKernel\\')) {
+            return '';
+        }
 
         return "$rule may not use $fqn: put it behind an interface implemented in Infrastructure";
     }
@@ -644,13 +648,15 @@ function archClassInfo(array $tokens): ?array
 function archCheckCqrsSet(string $moduleDir, string $ns, array $messages): array
 {
     $found = [];
-    if (!is_file("$moduleDir/src/Infrastructure/Bus/ModuleCommandBus.php")) {
-        $found[] = 'src/Infrastructure/Bus/ModuleCommandBus.php:1 ARCH-08 missing: the command bus of the module (copy it from the ps-module template)';
-    }
     $yaml = '';
     foreach (archYamlFiles("$moduleDir/config") as $file) {
         // Without comment lines: the template has commented examples.
         $yaml .= "\n" . (string) preg_replace('/^\s*#.*$/m', '', (string) file_get_contents($file));
+    }
+    // The bus of runtime-cqrs (package collection) or, in modules from before it, a copy in src/Infrastructure/Bus.
+    $packageBus = str_contains($yaml, 'PrestaShopHeaven\\Runtime\\Cqrs\\ModuleCommandBus');
+    if (!$packageBus && !is_file("$moduleDir/src/Infrastructure/Bus/ModuleCommandBus.php")) {
+        $found[] = 'config/common.yml:1 ARCH-08 missing: the command bus of the module (service prestashopheaven.<module>.command_bus with class PrestaShopHeaven\\Runtime\\Cqrs\\ModuleCommandBus, package runtime-cqrs)';
     }
     if (!str_contains($yaml, 'ModuleCommandBus')) {
         $found[] = 'config/common.yml:1 ARCH-08 the command bus is not registered (ModuleCommandBus with !tagged_locator)';
