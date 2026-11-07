@@ -25,6 +25,7 @@ use function PrestaHavenMono\checkRelease;
 use function PrestaHavenMono\coverageProblems;
 use function PrestaHavenMono\envForWindows;
 use function PrestaHavenMono\envValues;
+use function PrestaHavenMono\isGuardExit;
 use function PrestaHavenMono\kind;
 use function PrestaHavenMono\main;
 use function PrestaHavenMono\newMonorepo;
@@ -294,6 +295,49 @@ final class MonoTest extends TestCase
         self::assertCount(1, $problems);
         self::assertStringContainsString('prestashopheaven/runtime-cqrs: coverage 50 % is below 100 %; not fully covered: Half.php (2/4)', $problems[0]);
         self::assertSame(['No coverage report at ' . $this->root . '/none.xml.'], coverageProblems($this->root, $this->root . '/none.xml'));
+    }
+
+    public function testTheGuardExitAndIntegrationTestedFilesDoNotCount(): void
+    {
+        $src = $this->root . '/packages/kit/src';
+        file_put_contents("$src/Guarded.php", "<?php\nif (!defined('_PS_VERSION_')) {\n    exit;\n}\n\$a = 1;\n");
+        file_put_contents("$src/Shop.php", "<?php\n\$b = 2;\n");
+        mkdir($this->root . '/packages/kit/tests/Integration', 0777, true);
+        file_put_contents($this->root . '/packages/kit/tests/Integration/ShopTest.php', "<?php\n");
+        $file = $this->root . '/packages/kit/composer.json';
+        $kit = readJson($file);
+        $kit['extra']['prestashopheaven']['integration-tested'] = ['src/Shop.php'];
+        file_put_contents($file, json_encode($kit));
+        $real = str_replace('\\', '/', (string) realpath($src));
+        $clover = $this->root . '/clover.xml';
+        file_put_contents($clover, '<?xml version="1.0"?><coverage><project>'
+            . '<file name="' . $real . '/Guarded.php"><line num="2" type="stmt" count="1"/><line num="3" type="stmt" count="0"/><line num="5" type="stmt" count="1"/></file>'
+            . '<file name="' . $real . '/Shop.php"><line num="2" type="stmt" count="0"/></file>'
+            . '</project></coverage>');
+
+        ob_start();
+        $problems = coverageProblems($this->root, $clover);
+        $output = (string) ob_get_clean();
+
+        self::assertSame([], $problems);
+        self::assertStringContainsString('prestashopheaven/runtime-kit: 100 % of 2 lines', $output);
+        self::assertSame([], validate($this->root));
+        self::assertTrue(isGuardExit(['<?php', "if (!defined('_PS_VERSION_')) {", '    exit;'], 3));
+        self::assertFalse(isGuardExit(['<?php', 'if ($x) {', '    exit;'], 3));
+        self::assertFalse(isGuardExit(['<?php', '$a = 1;'], 2));
+    }
+
+    public function testAnIntegrationTestedFileNeedsItsIntegrationTest(): void
+    {
+        file_put_contents($this->root . '/packages/kit/src/Shop.php', "<?php\n");
+        $file = $this->root . '/packages/kit/composer.json';
+        $kit = readJson($file);
+        $kit['extra']['prestashopheaven']['integration-tested'] = ['src/Shop.php', 'src/Missing.php'];
+        file_put_contents($file, json_encode($kit));
+
+        $problems = implode("\n", validate($this->root));
+        self::assertStringContainsString('src/Shop.php is integration-tested but has no tests/Integration/ShopTest.php', $problems);
+        self::assertStringContainsString('integration-tested lists src/Missing.php, which is not a file in src/', $problems);
     }
 
     public function testALowerCoverageGateNeedsAReason(): void

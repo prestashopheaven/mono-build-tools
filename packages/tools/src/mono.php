@@ -296,6 +296,16 @@ function validate(string $root): array
         if (isset($meta['coverage-min']) && trim((string) ($meta['coverage-reason'] ?? '')) === '') {
             $problems[] = "$where: extra.prestashopheaven.coverage-min lowers the coverage gate (PKG-08) and needs a coverage-reason.";
         }
+        // Classes that need PrestaShop are left out of the unit coverage only with an integration test of their own,
+        // run in real shops by the fixture module (tests/Integration/<path>Test.php).
+        foreach ((array) ($meta['integration-tested'] ?? []) as $file) {
+            $file = (string) $file;
+            if (!str_starts_with($file, 'src/') || !is_file("$root/{$package['dir']}/$file")) {
+                $problems[] = "$where: extra.prestashopheaven.integration-tested lists $file, which is not a file in src/.";
+            } elseif (!is_file("$root/{$package['dir']}/tests/Integration/" . substr($file, 4, -4) . 'Test.php')) {
+                $problems[] = "$where: $file is integration-tested but has no tests/Integration/" . substr($file, 4, -4) . 'Test.php.';
+            }
+        }
         if (trim((string) ($p['description'] ?? '')) === '') {
             $problems[] = "$where: description is empty.";
         }
@@ -612,8 +622,11 @@ function writePhpstanConfig(string $root, string $dir): void
     $versions = root($root)['extra']['prestashopheaven']['monorepo']['phpstan'] ?? ['8.1.0', '9.2.0'];
     $paths = [];
     foreach (packages($root) as $package) {
-        foreach (['src', 'tests/Unit'] as $sub) {
-            if (is_dir("$root/{$package['dir']}/$sub")) {
+        // Default src/ and tests/Unit; a package whose unit tests use PrestaShop stubs lists its own paths
+        // (extra.prestashopheaven.phpstan-paths), because the stubs clash with the real PrestaShop classes.
+        $own = $package['composer']['extra']['prestashopheaven']['phpstan-paths'] ?? ['src', 'tests/Unit'];
+        foreach ((array) $own as $sub) {
+            if (file_exists("$root/{$package['dir']}/$sub")) {
                 $paths[] = "{$package['dir']}/$sub";
             }
         }
@@ -668,17 +681,30 @@ function coverageProblems(string $root, string $clover): array
     $lines = [];
     foreach ($xml->xpath('//file') ?: [] as $file) {
         $path = str_replace('\\', '/', (string) $file['name']);
-        $metrics = $file->metrics;
-        $lines[$path] = [(int) ($metrics['statements'] ?? 0), (int) ($metrics['coveredstatements'] ?? 0)];
+        $source = is_file($path) ? (file($path, FILE_IGNORE_NEW_LINES) ?: []) : [];
+        $statements = $hit = 0;
+        foreach ($file->line as $line) {
+            if ((string) $line['type'] !== 'stmt' || isGuardExit($source, (int) $line['num'])) {
+                continue;
+            }
+            ++$statements;
+            $hit += (int) $line['count'] > 0 ? 1 : 0;
+        }
+        if ($file->line->count() === 0) {
+            $statements = (int) ($file->metrics['statements'] ?? 0);
+            $hit = (int) ($file->metrics['coveredstatements'] ?? 0);
+        }
+        $lines[$path] = [$statements, $hit];
     }
     $problems = [];
     foreach (packages($root) as $package) {
         $min = (float) ($package['composer']['extra']['prestashopheaven']['coverage-min'] ?? 100);
         $src = str_replace('\\', '/', (string) realpath("$root/{$package['dir']}/src")) . '/';
+        $integration = array_map(static fn (string $f): string => substr($f, 4), (array) ($package['composer']['extra']['prestashopheaven']['integration-tested'] ?? []));
         $total = $covered = 0;
         $missing = [];
         foreach ($lines as $path => [$statements, $hit]) {
-            if (str_starts_with($path, $src)) {
+            if (str_starts_with($path, $src) && !in_array(substr($path, strlen($src)), $integration, true)) {
                 $total += $statements;
                 $covered += $hit;
                 if ($hit < $statements) {
@@ -694,6 +720,26 @@ function coverageProblems(string $root, string $clover): array
     }
 
     return $problems;
+}
+
+/**
+ * True when line $number (1-based) is the `exit;` of the `if (!defined('_PS_VERSION_')) { exit; }` guard at the top
+ * of a PrestaShop file: it never runs in a test, so the coverage gate does not count it.
+ *
+ * @param list<string> $source the lines of the file
+ */
+function isGuardExit(array $source, int $number): bool
+{
+    if (trim($source[$number - 1] ?? '') !== 'exit;') {
+        return false;
+    }
+    for ($i = $number - 2; $i >= 0 && $i >= $number - 3; --$i) {
+        if (str_contains($source[$i], "defined('_PS_VERSION_')")) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
