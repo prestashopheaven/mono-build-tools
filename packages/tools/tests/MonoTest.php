@@ -25,6 +25,7 @@ use function PrestaHavenMono\checkRelease;
 use function PrestaHavenMono\coverageProblems;
 use function PrestaHavenMono\envForWindows;
 use function PrestaHavenMono\envValues;
+use function PrestaHavenMono\fixtureTests;
 use function PrestaHavenMono\isGuardExit;
 use function PrestaHavenMono\kind;
 use function PrestaHavenMono\main;
@@ -338,6 +339,23 @@ final class MonoTest extends TestCase
         $problems = implode("\n", validate($this->root));
         self::assertStringContainsString('src/Shop.php is integration-tested but has no tests/Integration/ShopTest.php', $problems);
         self::assertStringContainsString('integration-tested lists src/Missing.php, which is not a file in src/', $problems);
+    }
+
+    public function testFixtureTestsCopiesTheIntegrationTestsOfEveryPackage(): void
+    {
+        mkdir($this->root . '/packages/kit/tests/Integration/Install', 0777, true);
+        file_put_contents($this->root . '/packages/kit/tests/Integration/Install/InstallerTest.php', "<?php\n");
+        $fixture = $this->root . '/tests/fixture/heavenfoo';
+        mkdir($fixture . '/tests/Packages/old', 0777, true);
+        file_put_contents($fixture . '/tests/Packages/old/StaleTest.php', "<?php\n");
+
+        self::assertSame(1, fixtureTests($fixture));
+        self::assertFileExists($fixture . '/tests/Packages/kit/Install/InstallerTest.php');
+        self::assertDirectoryDoesNotExist($fixture . '/tests/Packages/old', 'stale copies are removed');
+        self::assertDirectoryDoesNotExist($fixture . '/tests/Packages/cqrs', 'a package without integration tests');
+
+        $this->expectException(\RuntimeException::class);
+        fixtureTests(sys_get_temp_dir());
     }
 
     public function testALowerCoverageGateNeedsAReason(): void

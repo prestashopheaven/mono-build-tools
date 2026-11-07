@@ -98,6 +98,11 @@ function main(array $args): int
                 return check($root);
             case 'register':
                 return register($root, $dryRun);
+            case 'fixture-tests':
+                $copied = fixtureTests((string) getcwd());
+                echo "Copied the integration tests of $copied package(s) into tests/Packages.\n";
+
+                return 0;
             default:
                 fwrite(STDERR, "Usage: ps-module mono new|package|validate|packages|matrix|check|check-release <X.Y.Z>|set-version <X.Y.Z>|register [--dry-run]\n");
 
@@ -720,6 +725,72 @@ function coverageProblems(string $root, string $clover): array
     }
 
     return $problems;
+}
+
+/**
+ * In a fixture module inside a monorepo (tests/fixture/<module>): copies every package's tests/Integration into
+ * <module>/tests/Packages/<dir>/, because Composer leaves tests/ out of a path package (export-ignore) and the test shop
+ * only gets the module folder. The fixture runs this after composer install (scripts) and its phpunit.xml.dist runs
+ * tests/Packages. Returns the number of packages copied.
+ *
+ * @throws \RuntimeException when $fixture is not inside a monorepo
+ */
+function fixtureTests(string $fixture): int
+{
+    $fixture = rtrim(str_replace('\\', '/', (string) (realpath($fixture) ?: $fixture)), '/');
+    $root = '';
+    for ($dir = dirname($fixture); $dir !== dirname($dir); $dir = dirname($dir)) {
+        $composer = is_file("$dir/composer.json") ? json_decode((string) file_get_contents("$dir/composer.json"), true) : null;
+        if (is_array($composer) && isset($composer['extra']['prestashopheaven']['monorepo'])) {
+            $root = $dir;
+            break;
+        }
+    }
+    if ($root === '') {
+        throw new \RuntimeException("$fixture is not inside a monorepo (no composer.json with extra.prestashopheaven.monorepo above it).");
+    }
+    $target = "$fixture/tests/Packages";
+    removeTree($target);
+    $copied = 0;
+    foreach (packages($root) as $package) {
+        $source = "$root/{$package['dir']}/tests/Integration";
+        if (is_dir($source)) {
+            copyTree($source, "$target/" . basename($package['dir']));
+            ++$copied;
+        }
+    }
+
+    return $copied;
+}
+
+/**
+ * Copies a folder tree.
+ */
+function copyTree(string $from, string $to): void
+{
+    @mkdir($to, 0777, true);
+    foreach (scandir($from) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        is_dir("$from/$entry") ? copyTree("$from/$entry", "$to/$entry") : copy("$from/$entry", "$to/$entry");
+    }
+}
+
+/**
+ * Removes a folder tree (nothing when it does not exist).
+ */
+function removeTree(string $dir): void
+{
+    if (!is_dir($dir)) {
+        return;
+    }
+    foreach (scandir($dir) ?: [] as $entry) {
+        if ($entry !== '.' && $entry !== '..') {
+            is_dir("$dir/$entry") && !is_link("$dir/$entry") ? removeTree("$dir/$entry") : unlink("$dir/$entry");
+        }
+    }
+    rmdir($dir);
 }
 
 /**
