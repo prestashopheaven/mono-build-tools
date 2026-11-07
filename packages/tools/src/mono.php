@@ -866,7 +866,7 @@ function register(string $root, bool $dryRun): int
     };
 
     if (!$exists($monorepo)) {
-        $description = (string) (root($root)['description'] ?? '');
+        $description = repoDescription((string) (root($root)['description'] ?? ''));
         if ($run('gh repo create ' . escapeshellarg($monorepo) . ' --public --description ' . escapeshellarg($description)) !== 0) {
             return 1;
         }
@@ -875,7 +875,7 @@ function register(string $root, bool $dryRun): int
     foreach (packages($root) as $package) {
         $repo = $package['repo'];
         if (!$exists($repo)) {
-            $description = (string) ($package['composer']['description'] ?? '') . " (read-only split of $monorepo)";
+            $description = repoDescription((string) ($package['composer']['description'] ?? ''), " (read-only split of $monorepo)");
             if ($run('gh repo create ' . escapeshellarg($repo) . ' --public --disable-issues --disable-wiki --description ' . escapeshellarg($description)) !== 0) {
                 return 1;
             }
@@ -912,6 +912,24 @@ function register(string $root, bool $dryRun): int
     echo "Registered $monorepo and its packages.\n";
 
     return 0;
+}
+
+/**
+ * A GitHub repo description from a package text: one line, "%" spelled out (escapeshellarg drops it on Windows) and at
+ * most 350 characters (GitHub's limit), cut on a word with "…" before the suffix, which is always kept.
+ */
+function repoDescription(string $text, string $suffix = ''): string
+{
+    $text = trim((string) preg_replace('/\s+/', ' ', str_replace('%', 'percent', $text)));
+    $text = (string) preg_replace('/(\d) ?percent/', '$1 percent', $text);
+    $room = 350 - mb_strlen($suffix);
+    if (mb_strlen($text) > $room) {
+        $cut = mb_substr($text, 0, $room - 1);
+        $space = mb_strrpos($cut, ' ');
+        $text = rtrim($space === false ? $cut : mb_substr($cut, 0, $space), ' ,;:.') . '…';
+    }
+
+    return $text . $suffix;
 }
 
 /**

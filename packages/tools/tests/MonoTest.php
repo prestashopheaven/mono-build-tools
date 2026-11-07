@@ -34,6 +34,7 @@ use function PrestaHavenMono\newPackage;
 use function PrestaHavenMono\packages;
 use function PrestaHavenMono\readJson;
 use function PrestaHavenMono\register;
+use function PrestaHavenMono\repoDescription;
 use function PrestaHavenMono\requireVersion;
 use function PrestaHavenMono\setVersion;
 use function PrestaHavenMono\studly;
@@ -463,6 +464,32 @@ final class MonoTest extends TestCase
 
         self::assertSame(['PACKAGIST_TOKEN' => 'secret', 'EMPTY' => ''], envValues($this->root));
         self::assertSame([], envValues($this->root . '/nowhere'));
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: string, 2: string}>
+     */
+    public static function repoDescriptions(): iterable
+    {
+        yield 'short stays' => ['The core.', '', 'The core.'];
+        yield 'suffix added' => ['The core.', ' (split)', 'The core. (split)'];
+        yield 'percent spelled out' => ['100 % coverage', '', '100 percent coverage'];
+        yield 'whitespace collapsed' => ["two\n  lines", '', 'two lines'];
+        yield 'empty' => ['', '', ''];
+    }
+
+    #[DataProvider('repoDescriptions')]
+    public function testRepoDescriptionIsSafeForGithubAndTheShell(string $text, string $suffix, string $expected): void
+    {
+        self::assertSame($expected, repoDescription($text, $suffix));
+    }
+
+    public function testALongRepoDescriptionIsCutOnAWordAndKeepsItsSuffix(): void
+    {
+        $description = repoDescription(str_repeat('word ', 100), ' (read-only split of prestashopheaven/mono-x)');
+
+        self::assertLessThanOrEqual(350, mb_strlen($description));
+        self::assertStringEndsWith('word… (read-only split of prestashopheaven/mono-x)', $description);
     }
 
     public function testRegisterInDryRunOnlyPrintsWhatItWouldDo(): void
