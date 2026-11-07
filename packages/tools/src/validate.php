@@ -76,7 +76,7 @@ if ($report->errorCount() === 0 && is_file(__DIR__ . '/dod.php')) {
         if ($repoDir !== null && is_array($meta) && isset($meta['fingerprint'])) {
             dod_stamp($repoDir, 'validate-zip', $meta['fingerprint']);
         } else {
-            ps_vlog("validate: no stamp: " . ($repoDir === null ? 'no module repository above the zip' : "no fingerprint in $target.json (zip not made by ps-module build)"));
+            ps_vlog('validate: no stamp: ' . ($repoDir === null ? 'no module repository above the zip' : "no fingerprint in $target.json (zip not made by ps-module build)"));
         }
     } elseif (($repoDir = dod_repo_dir($moduleDir)) !== null) {
         dod_stamp($repoDir, 'validate-src');
@@ -174,7 +174,7 @@ function loadRules(): array
     $data = json_decode((string) ($json ?? file_get_contents($bundled)), true);
     $rules = $data['rules'];
     $rules['_version'] = $data['validator']['version'] ?? 'unknown';
-    // The live list contains zero-width spaces inside function names (proc_​open).
+    // The live list contains zero-width spaces inside function names (proc_open).
     foreach ($rules['Disallowed functions & methods'] as &$fn) {
         $fn['name'] = str_replace("\u{200B}", '', $fn['name']);
     }

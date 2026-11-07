@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -100,8 +100,8 @@ function gitflow_cli(array $args): int
 
             return 0;
     }
-    fwrite(STDERR, "Usage: ps-module git status [--remote] [--json] | start <slug> [--fix]"
-        . " | pr [--release=X.Y.Z --notes=... [--publish [--no-accept] [--channel=beta] [--rollout=N] [--min-updater=X.Y.Z] [--prestashop=...] [--php=...]]]"
+    fwrite(STDERR, 'Usage: ps-module git status [--remote] [--json] | start <slug> [--fix]'
+        . ' | pr [--release=X.Y.Z --notes=... [--publish [--no-accept] [--channel=beta] [--rollout=N] [--min-updater=X.Y.Z] [--prestashop=...] [--php=...]]]'
         . " | merge | finish | later\n");
 
     return 2;
@@ -600,7 +600,6 @@ function gitflow_pr(string $repoDir, array $options = []): int
 
     return $code;
 }
-
 
 /**
  * --name=value and --flag options of a git subcommand.

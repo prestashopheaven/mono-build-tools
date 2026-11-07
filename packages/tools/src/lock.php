@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -43,7 +43,7 @@ if (!function_exists('ps_verbose')) {
  * Takes the lock on a shared resource, waiting while another process holds it. Returns at once when this process or a
  * parent already holds it. Throws a RuntimeException when the wait takes longer than the timeout.
  *
- * @param string $name    resource: [a-z0-9-]+
+ * @param string $name resource: [a-z0-9-]+
  * @param string $purpose what this process does with it (shown to the ones that wait)
  * @param string $fromDir where to look upwards for the workspace (the repo or module folder)
  */
@@ -147,7 +147,7 @@ function ps_lock_dir(string $fromDir): string
     }
     $dir = rtrim(str_replace('\\', '/', (string) (realpath($fromDir) ?: $fromDir)), '/');
     for ($i = 0; $i < 8 && $dir !== '' && $dir !== dirname($dir); ++$i, $dir = dirname($dir)) {
-        if (is_file("$dir/libraries/module-dev-tools/composer.json") || is_file("$dir/.env")) {
+        if (is_file("$dir/libraries/module-dev-tools/composer.json") || is_file("$dir/libraries/mono-build-tools/composer.json") || is_file("$dir/.env")) {
             return "$dir/.cache/locks";
         }
     }

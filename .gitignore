@@ -1,5 +1,8 @@
 /vendor/
 /.cache/
+/composer.lock
 /packages/*/vendor/
-/packages/*/.cache/
 /packages/*/composer.lock
+/tests/fixture/*/vendor/
+/tests/fixture/*/composer.lock
+/node_modules/

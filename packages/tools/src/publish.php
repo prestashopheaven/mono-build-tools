@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -607,7 +607,7 @@ function publish_cmd_docs(array $ctx, bool $dryRun, bool $force): int
     $remote = rtrim(publish_require_env($ctx, 'DOCS_SITE_SFTP_PATH'), '/') . '/' . $ctx['module'];
     $files = array_map('basename', glob("$dir/*") ?: []);
     if ($dryRun) {
-        echo "Dry run: would upload " . count($files) . " file(s) to $remote/ on the docs server and remove other files there.\n";
+        echo 'Dry run: would upload ' . count($files) . " file(s) to $remote/ on the docs server and remove other files there.\n";
 
         return 0;
     }
@@ -616,7 +616,7 @@ function publish_cmd_docs(array $ctx, bool $dryRun, bool $force): int
         throw new RuntimeException("cannot create $remote on the docs server.");
     }
     foreach ($files as $file) {
-        if (!$sftp->put("$remote/$file", "$dir/$file", \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+        if (!$sftp->put("$remote/$file", "$dir/$file", phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
             throw new RuntimeException("upload of $file failed.");
         }
         echo "  uploaded $file\n";
@@ -732,7 +732,7 @@ function publish_cmd_demo(array $ctx, bool $dryRun, bool $force): int
     $ssh = publish_connect($ctx, 'DEMO_SITE_SSH');
     publish_demo_upload_tools($ssh, $tools, false);
     $remoteZip = "$tools/uploads/{$ctx['module']}-{$ctx['version']}.zip";
-    if (!$ssh->put($remoteZip, $zip, \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+    if (!$ssh->put($remoteZip, $zip, phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
         throw new RuntimeException("upload of the zip to $remoteZip failed.");
     }
     [$output, $exit] = publish_demo_run($ssh, $tools, 'deploy ' . escapeshellarg($remoteZip) . ' ' . escapeshellarg($ctx['module']));
@@ -810,7 +810,7 @@ function publish_cmd_demo_site(array $ctx, array $args, bool $dryRun, array $fla
         if (!$ssh->is_dir($tools) && !$ssh->mkdir($tools, 0700, true)) {
             throw new RuntimeException("cannot create $tools.");
         }
-        if (!$ssh->put("$tools/demo-server-check.sh", __DIR__ . '/../resources/publish/demo-server-check.sh', \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+        if (!$ssh->put("$tools/demo-server-check.sh", __DIR__ . '/../resources/publish/demo-server-check.sh', phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
             throw new RuntimeException('upload of demo-server-check.sh failed.');
         }
         $ssh->setTimeout(120);
@@ -900,7 +900,7 @@ function publish_demo_tools_dir(array $ctx): string
  *
  * @throws RuntimeException when the upload fails or the demo shop is not set up
  */
-function publish_demo_upload_tools(\phpseclib3\Net\SFTP $ssh, string $tools, bool $setup): void
+function publish_demo_upload_tools(phpseclib3\Net\SFTP $ssh, string $tools, bool $setup): void
 {
     if (!$setup && !$ssh->is_file("$tools/demo-site.conf")) {
         throw new RuntimeException("the demo shop is not set up ($tools/demo-site.conf missing): vendor/bin/ps-module demo-site setup");
@@ -917,7 +917,7 @@ function publish_demo_upload_tools(\phpseclib3\Net\SFTP $ssh, string $tools, boo
     // The brand of the workspace (branding/, found upwards from here): logo.svg for the back office and the intro
     // page, a PNG of it (brand.json > logo_png) for the shop logo and the login page. Kept on the server.
     foreach (publish_brand_files() as $name => $local) {
-        if (!$ssh->put("$tools/$name", $local, \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+        if (!$ssh->put("$tools/$name", $local, phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
             throw new RuntimeException("upload of $name failed.");
         }
     }
@@ -959,7 +959,7 @@ function publish_brand_files(): array
  *
  * @return array{0: string, 1: int}
  */
-function publish_demo_run(\phpseclib3\Net\SFTP $ssh, string $tools, string $command, bool $print = true): array
+function publish_demo_run(phpseclib3\Net\SFTP $ssh, string $tools, string $command, bool $print = true): array
 {
     $ssh->setTimeout(3600);
     // VERBOSE=1: demo-site.sh then reports every step too (ps-module -v).
@@ -1042,7 +1042,7 @@ function publish_demo_push(array $ctx, string $local, bool $dryRun): int
         throw new RuntimeException("cannot create $remote.");
     }
     foreach (['db.sql.gz', 'files.tar.gz', 'snapshot.json'] as $file) {
-        if (is_file("$dir/$file") && !$ssh->put("$remote/$file", "$dir/$file", \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+        if (is_file("$dir/$file") && !$ssh->put("$remote/$file", "$dir/$file", phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
             throw new RuntimeException("upload of $file failed.");
         }
     }
@@ -1113,7 +1113,7 @@ function publish_demo_apply(array $ctx, string $local, string $note, bool $dryRu
         if (!$ssh->is_dir(dirname($target)) && !$ssh->mkdir(dirname($target), 0700, true)) {
             throw new RuntimeException('cannot create ' . dirname($target) . '.');
         }
-        if (!$ssh->put($target, $path, \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+        if (!$ssh->put($target, $path, phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
             throw new RuntimeException("upload of $relative failed.");
         }
     }
@@ -1144,7 +1144,7 @@ function publish_after_deploy(array $ctx, string $what): int
     try {
         return publish_cmd_vps_snapshot($ctx, $description, false) ? 0 : 1;
     } catch (RuntimeException $e) {
-        fwrite(STDERR, "ps-module publish: the deploy is done, but the VPS snapshot failed: " . publish_mask($e->getMessage()) . "\n"
+        fwrite(STDERR, 'ps-module publish: the deploy is done, but the VPS snapshot failed: ' . publish_mask($e->getMessage()) . "\n"
             . "  Try again later: vendor/bin/ps-module publish vps-snapshot\n");
 
         return 1;
@@ -1237,7 +1237,7 @@ function publish_cmd_vps_snapshot(array $ctx, string $description, bool $dryRun)
             echo "  snapshot {$snapshot['name']} ({$snapshot['dateTimeCreate']})" . ($i === 0 ? ' - the oldest: always kept' : '') . "\n";
         }
         $remove = array_slice($active, 1, max(0, count($active) - ($keep - 1)));
-        echo "Dry run: would " . ($remove !== [] ? 'remove ' . implode(', ', array_map(static fn (array $s): string => $s['name'], array_reverse($remove))) . ' (the most recent), then ' : '')
+        echo 'Dry run: would ' . ($remove !== [] ? 'remove ' . implode(', ', array_map(static fn (array $s): string => $s['name'], array_reverse($remove))) . ' (the most recent), then ' : '')
             . "create a TransIP snapshot of $vps (\"$description\"); kept: the oldest + the newest, $keep in all.\n";
 
         return true;
@@ -1663,15 +1663,15 @@ function publish_require_env(array $ctx, string $key): string
  *
  * @throws RuntimeException when phpseclib is missing or the login fails
  */
-function publish_connect(array $ctx, string $prefix): \phpseclib3\Net\SFTP
+function publish_connect(array $ctx, string $prefix): phpseclib3\Net\SFTP
 {
     // phpseclib: from the vendor/ this package is installed in (a module), or from a checkout of this package.
     foreach ([__DIR__ . '/../../../autoload.php', __DIR__ . '/../vendor/autoload.php', $ctx['module_dir'] . '/vendor/autoload.php'] as $autoload) {
-        if (!class_exists(\phpseclib3\Net\SFTP::class) && is_file($autoload)) {
+        if (!class_exists(phpseclib3\Net\SFTP::class) && is_file($autoload)) {
             require_once $autoload;
         }
     }
-    if (!class_exists(\phpseclib3\Net\SFTP::class)) {
+    if (!class_exists(phpseclib3\Net\SFTP::class)) {
         throw new RuntimeException('phpseclib is missing: composer update prestashopheaven/module-dev-tools (1.13+).');
     }
     require_once __DIR__ . '/publish-sftp.php';
@@ -1685,8 +1685,8 @@ function publish_connect(array $ctx, string $prefix): \phpseclib3\Net\SFTP
         $passphrase = publish_env($ctx, $prefix . '_KEY_PASSPHRASE');
         $text = is_file($key) ? (string) file_get_contents($key) : str_replace('\n', "\n", $key);
         try {
-            $credential = \phpseclib3\Crypt\PublicKeyLoader::load($text, $passphrase !== '' ? $passphrase : false);
-        } catch (\Throwable $e) {
+            $credential = phpseclib3\Crypt\PublicKeyLoader::load($text, $passphrase !== '' ? $passphrase : false);
+        } catch (Throwable $e) {
             if ($password === '') {
                 throw new RuntimeException("{$prefix}_KEY is not a readable private key (a file path or the key itself).");
             }
@@ -1706,7 +1706,7 @@ function publish_connect(array $ctx, string $prefix): \phpseclib3\Net\SFTP
     try {
         $sftp = new PublishSftp($host, $port, 20);
         $ok = $sftp->login($user, $credential);
-    } catch (\Throwable $e) {
+    } catch (Throwable $e) {
         ps_vlog('connection error: ' . get_class($e) . ': ' . $e->getMessage());
         throw new RuntimeException("cannot connect to {$prefix}_HOST on port $port (" . get_class($e) . ').');
     }
@@ -1750,7 +1750,6 @@ function publish_http_get(string $url): ?array
 
     return is_string($body) ? ['status' => $status, 'body' => $body] : null;
 }
-
 
 /**
  * Installs PrestaShop on the demo server, once, before `demo-site setup`: the files of <version> from the local cache
@@ -1845,7 +1844,7 @@ function publish_demo_install_prestashop(array $ctx, string $version, bool $dryR
         }
         printf("Uploading %.1f MB ...\n", filesize($archive) / 1048576);
         $remoteArchive = "$tools/prestashop-$version.tar.gz";
-        if (!$ssh->put($remoteArchive, $archive, \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+        if (!$ssh->put($remoteArchive, $archive, phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
             throw new RuntimeException('upload of the PrestaShop files failed.');
         }
         @unlink($archive);
@@ -1867,7 +1866,7 @@ function publish_demo_install_prestashop(array $ctx, string $version, bool $dryR
         }
     }
     foreach ($packs as $pack) {
-        if (!$ssh->put("$root/translations/" . basename($pack), $pack, \phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
+        if (!$ssh->put("$root/translations/" . basename($pack), $pack, phpseclib3\Net\SFTP::SOURCE_LOCAL_FILE)) {
             throw new RuntimeException('upload of language pack ' . basename($pack) . ' failed.');
         }
     }

@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -50,7 +50,7 @@ function coverageMain(string $moduleDir): int
     }
     $driver = coverageDriver();
     if ($driver === '') {
-        fwrite(STDERR, "Coverage: no coverage driver in this PHP (" . PHP_BINARY . "). Install PCOV (pecl install pcov, or the\n"
+        fwrite(STDERR, 'Coverage: no coverage driver in this PHP (' . PHP_BINARY . "). Install PCOV (pecl install pcov, or the\n"
             . "php_pcov DLL on Windows) or enable Xdebug; in CI: shivammathur/setup-php with coverage: pcov.\n"
             . "Only when that is impossible: vendor/bin/ps-module skip check \"<reason>\" (the user sees it).\n");
 

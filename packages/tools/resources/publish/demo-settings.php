@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -165,7 +165,7 @@ foreach (glob(_PS_ROOT_DIR_ . '/*', GLOB_ONLYDIR) ?: [] as $candidate) {
     }
 }
 if ($adminDir === '') {
-    fwrite(STDERR, "No back-office folder found in " . _PS_ROOT_DIR_ . ".\n");
+    fwrite(STDERR, 'No back-office folder found in ' . _PS_ROOT_DIR_ . ".\n");
     exit(1);
 }
 if (!$introOnly) {
@@ -223,7 +223,7 @@ if (!$introOnly) {
     demo_vlog('brand: ' . ($brand !== [] ? implode(', ', $brand) : 'no brand-logo.svg/png next to this script') . '; Smarty cache cleared');
 }
 
-$base =rtrim($url !== '' ? $url : Tools::getShopDomainSsl(true) . __PS_BASE_URI__, '/');
+$base = rtrim($url !== '' ? $url : Tools::getShopDomainSsl(true) . __PS_BASE_URI__, '/');
 $login = $base . '/' . $adminDir . '/index.php?controller=AdminLogin&email=' . rawurlencode($email) . '&password=' . rawurlencode($password);
 $modules = [];
 foreach (Db::getInstance()->executeS('SELECT name, version, active FROM ' . _DB_PREFIX_ . "module WHERE name LIKE 'heaven%' ORDER BY name") ?: [] as $row) {

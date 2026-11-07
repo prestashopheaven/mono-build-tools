@@ -123,4 +123,3 @@ function copyTree(string $source, string $target): void
         $item->isDir() ? @mkdir($to, 0775, true) : copy($item->getPathname(), $to);
     }
 }
-

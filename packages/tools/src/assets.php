@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -57,7 +57,7 @@ if (!is_file("$devDir/package.json")) {
         echo "ps-module assets: no JavaScript in views/js/ and no _dev/package.json: nothing to test or build.\n";
         exit(0);
     }
-    $message = "ps-module assets: views/js/ has JavaScript without tests (" . implode(', ', $scripts) . ").\n"
+    $message = 'ps-module assets: views/js/ has JavaScript without tests (' . implode(', ', $scripts) . ").\n"
         . "Every script needs tests with 100% coverage (TST-20..29). Add the test setup: copy\n"
         . "  .claude/skills/ps-module/templates/optional/js-tests/module/_dev/   (plain JavaScript)\n"
         . "into the module as _dev/ (fill in the placeholders, see the recipe front-assets), write the tests in\n"
@@ -248,7 +248,7 @@ function assets_report(array $problems): void
     foreach ($problems as $problem) {
         echo "  - $problem\n";
     }
-    echo "Run: vendor/bin/ps-module assets build   (needs Node.js " . ASSETS_MIN_NODE . "+: lint, tests with 100% coverage, build;\n"
+    echo 'Run: vendor/bin/ps-module assets build   (needs Node.js ' . ASSETS_MIN_NODE . "+: lint, tests with 100% coverage, build;\n"
         . "     commit views/js/, _dev/ and _dev/build-manifest.json together)\n";
 }
 
@@ -276,7 +276,7 @@ function assets_build(string $devDir): int
     $npm = trim((string) shell_exec("npm -v 2>$null"));
     ps_vlog('assets: node ' . ($node !== '' ? $node : 'not found') . ', npm ' . ($npm !== '' ? $npm : 'not found') . ' (needs Node ' . ASSETS_MIN_NODE . '+)');
     if ($node === '' || $npm === '') {
-        fwrite(STDERR, "ps-module assets: Node.js and npm are needed to build the TypeScript (Node " . ASSETS_MIN_NODE . "+), but "
+        fwrite(STDERR, 'ps-module assets: Node.js and npm are needed to build the TypeScript (Node ' . ASSETS_MIN_NODE . '+), but '
             . ($node === '' ? 'node' : 'npm') . " was not found on the PATH.\n"
             . "Install Node.js LTS (https://nodejs.org) and run this again. If that is not possible here, record it:\n"
             . "  vendor/bin/ps-module skip assets \"<reason>\"   (the user sees it: the shipped JS then does not match the TypeScript)\n");

@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -28,9 +28,12 @@
 require_once __DIR__ . '/verbose.php';
 
 $moduleDir = rtrim(str_replace('\\', '/', (string) getcwd()), '/');
-$config = json_decode((string) file_get_contents($moduleDir . '/tests/phpstan/config.json'), true);
+// A monorepo (ps-module mono check) generates its config.json and phpstan.neon into .cache and points here with
+// PS_PHPSTAN_DIR; a module or single-package library keeps them in tests/phpstan.
+$configDir = getenv('PS_PHPSTAN_DIR') ?: $moduleDir . '/tests/phpstan';
+$config = json_decode((string) file_get_contents($configDir . '/config.json'), true);
 $phpstan = $moduleDir . '/vendor/bin/phpstan';
-$neon = $moduleDir . '/tests/phpstan/phpstan.neon';
+$neon = $configDir . '/phpstan.neon';
 
 $runs = [];
 if (getenv('_PS_ROOT_DIR_')) {

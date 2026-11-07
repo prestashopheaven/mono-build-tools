@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.0] - 2026-11-07
+
+### Gewijzigd
+- `module-dev-tools` heet nu `prestashopheaven/build-tools` en staat in de monorepo `mono-build-tools` van de
+  package-collectie (workspace `docs/packages/`). Licentie MIT (was AFL-3.0). Het commando blijft `ps-module`. Modules die
+  nog `module-dev-tools` 1.x gebruiken, werken gewoon door; ze gaan over bij hun volgende update (D10).
+- `ps-module link` koppelt ook de packages van de monorepo's (`libraries/mono-*/packages/*`), met de ene versie van
+  elke monorepo.
+- `ps-module phpstan` leest zijn config uit `PS_PHPSTAN_DIR` als die gezet is (monorepo's genereren hem).
+
+### Nieuw
+- `ps-module mono`: `new`, `package`, `validate`, `check` (de definition of done van elk package: regels, lint,
+  coding standard, PHPStan per PrestaShop-versie, PHP-compatibiliteit, conventies, unit-tests met coverage-gate),
+  `check-release`, `set-version`, `packages`, `matrix`, `register` (GitHub-repo's, deploy keys, secrets).
+
 ## [1.26.0] - 2026-11-02
 
 ### Gewijzigd

@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+# Not part of the package (Packagist dist zips and path-repository copies in module zips)
+/tests export-ignore
+/.gitattributes export-ignore
+/phpunit.xml.dist export-ignore

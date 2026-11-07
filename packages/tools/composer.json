@@ -1,9 +1,8 @@
 {
-    "name": "prestashopheaven/module-dev-tools",
-    "description": "Development tooling for PrestaHaven PrestaShop modules: validator pre-check, release zip with scoped vendor, Docker test shops, PHPStan against PrestaShop 8 and 9, conventions check and definition-of-done stamps.",
-    "version": "1.26.0",
+    "name": "prestashopheaven/build-tools",
+    "description": "The PrestaHaven module factory: the ps-module command (checks, PHPStan per PrestaShop version, release zip with scoped packages, Docker test shops, docs, translations, publishing, git workflow, definition-of-done stamps). Successor of module-dev-tools.",
     "type": "library",
-    "license": "AFL-3.0",
+    "license": "MIT",
     "authors": [
         {
             "name": "George van Engers",
@@ -28,6 +27,11 @@
         "phpcompatibility/php-compatibility": "Require \"^10.0@alpha\" in the module itself (alpha stability must be allowed by the root package).",
         "dompdf/dompdf": "Last-resort PDF engine for ps-module docs (Latin, Cyrillic and Greek only) when neither Docker nor a local Chrome/Edge is available. Require it in the module (require-dev)."
     },
+    "autoload": {
+        "psr-4": {
+            "PrestaShopHeaven\\Build\\Tools\\": "src/"
+        }
+    },
     "bin": [
         "bin/ps-module"
     ],
@@ -36,5 +40,31 @@
             "php": "8.1.0"
         },
         "sort-packages": true
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        },
+        "prestashopheaven": {
+            "kind": "build",
+            "use-when": "Building, checking, testing, documenting, releasing and publishing a PrestaHaven module or package: every ps-module command.",
+            "keywords": [
+                "ps-module",
+                "build",
+                "check",
+                "phpstan",
+                "release zip",
+                "scoping",
+                "test shops",
+                "docker",
+                "docs",
+                "translations",
+                "publish",
+                "definition of done",
+                "git workflow"
+            ],
+            "coverage-min": 12,
+            "coverage-reason": "The scripts moved from module-dev-tools 1.26 have no unit tests of their own; the definition-of-done runs of every module exercise them (verify, shops, docs, build). New code is fully unit-tested (src/mono.php). The gate rises as the tool is split into sub-tool packages (milestone M13, docs/packages/STATUS.md)."
+        }
     }
 }

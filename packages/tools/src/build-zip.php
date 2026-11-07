@@ -73,10 +73,10 @@ if (is_file("$stage/composer.json")) {
         // or unstable dev tools would block the build. They are never shipped: drop them here.
         $composer = json_decode((string) file_get_contents("$stage/composer.json"), true);
         unset($composer['require-dev'], $composer['autoload-dev']);
-        file_put_contents("$stage/composer.json", json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "
-");
-        fwrite(STDERR, "No composer.lock: building without require-dev.
-");
+        file_put_contents("$stage/composer.json", json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . '
+');
+        fwrite(STDERR, 'No composer.lock: building without require-dev.
+');
     }
     // Verbose: composer's own output too (no --quiet).
     $quiet = ps_verbose() ? '' : ' --quiet';
@@ -96,7 +96,7 @@ if (is_file("$stage/composer.json")) {
     ps_vlog('build: scope ' . ($scopes !== [] && $prefix !== '' ? implode(', ', $scopes) . " under $prefix" : 'none (no extra.prestashopheaven.scope / scope-prefix in composer.json)'));
     if ($scopes !== [] && $prefix !== '') {
         $changed = scopeNamespaces($stage, $prefix, $scopes);
-        fwrite(STDERR, "Scoped " . implode(', ', $scopes) . " under $prefix ($changed files)\n");
+        fwrite(STDERR, 'Scoped ' . implode(', ', $scopes) . " under $prefix ($changed files)\n");
         $cmd = 'composer dump-autoload --optimize --no-dev --no-interaction' . $quiet . ' --working-dir=' . escapeshellarg($stage);
         ps_vcmd($cmd, (string) getcwd());
         $start = microtime(true);
@@ -191,7 +191,7 @@ if (is_file(__DIR__ . '/dod.php')) {
         foreach (array_filter([$zipPath, $addonsStage !== null ? $addonsZipPath : null]) as $built) {
             file_put_contents($built . '.json', json_encode(['fingerprint' => dod_fingerprint($repoDir), 'version' => $version, 'built' => date('c')], JSON_PRETTY_PRINT) . "\n");
         }
-        ps_vlog("build: source fingerprint written next to both zips (validate-zip and validator-api check the zip against it)");
+        ps_vlog('build: source fingerprint written next to both zips (validate-zip and validator-api check the zip against it)');
     }
 }
 

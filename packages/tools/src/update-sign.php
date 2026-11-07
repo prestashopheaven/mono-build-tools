@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -229,12 +229,18 @@ function update_publish_from_trailers(string $message): array
         }
         $value = $m[2];
         switch (strtolower($m[1])) {
-            case 'update-publish': $publish['mode'] = strtolower($value); break;
-            case 'update-prestashop': $publish['prestashop'] = [$value]; break;
-            case 'update-php': $publish['php'] = [$value]; break;
-            case 'update-channel': $publish['channel'] = strtolower($value); break;
-            case 'update-rollout': $publish['rollout'] = (int) rtrim($value, '%'); break;
-            case 'update-min-updater': $publish['min_updater'] = $value; break;
+            case 'update-publish': $publish['mode'] = strtolower($value);
+                break;
+            case 'update-prestashop': $publish['prestashop'] = [$value];
+                break;
+            case 'update-php': $publish['php'] = [$value];
+                break;
+            case 'update-channel': $publish['channel'] = strtolower($value);
+                break;
+            case 'update-rollout': $publish['rollout'] = (int) rtrim($value, '%');
+                break;
+            case 'update-min-updater': $publish['min_updater'] = $value;
+                break;
             default: throw new RuntimeException("Unknown trailer {$m[1]} (known: " . implode(', ', UPDATE_TRAILERS) . ').');
         }
     }
@@ -407,7 +413,7 @@ function update_push_org_secret(string $secretBase64, string $org): void
     fclose($pipes[0]);
     $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
     if (proc_close($process) !== 0) {
-        throw new RuntimeException("gh could not set the organization secret (the key is in .env; after gh auth refresh -h github.com -s admin:org run: ps-module update-keys push-secret): " . trim(str_replace($secretBase64, '***', (string) $out)));
+        throw new RuntimeException('gh could not set the organization secret (the key is in .env; after gh auth refresh -h github.com -s admin:org run: ps-module update-keys push-secret): ' . trim(str_replace($secretBase64, '***', (string) $out)));
     }
     echo "ps-module update-keys: organization secret UPDATE_SIGNING_KEY set for $org (all repositories).\n";
 }

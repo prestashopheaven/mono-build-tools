@@ -1,0 +1,27 @@
+# Release of this monorepo (rules PKG-05): a push to main with the commit "Release X.Y.Z - <notes>" checks the release,
+# runs CI, tags vX.Y.Z and splits every package to its read-only repo with the same tag (prestashopheaven/workflows).
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    uses: prestashopheaven/workflows/.github/workflows/mono-prepare.yml@main
+
+  checks:
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: [prepare, checks]
+    uses: prestashopheaven/workflows/.github/workflows/mono-release.yml@main
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      notes: ${{ needs.prepare.outputs.notes }}
+    secrets: inherit

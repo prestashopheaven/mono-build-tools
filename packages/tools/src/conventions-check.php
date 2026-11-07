@@ -96,13 +96,13 @@ foreach ($found as $violation) {
 }
 
 if ($violations === []) {
-    echo "Conventions check OK (" . count($files) . " files: docblocks, clean main class, DDD + CQRS architecture, tests).\n";
+    echo 'Conventions check OK (' . count($files) . " files: docblocks, clean main class, DDD + CQRS architecture, tests).\n";
     exit(0);
 }
-echo "Conventions check found " . count($violations) . " problem(s):\n  " . implode("\n  ", $violations) . "\n";
+echo 'Conventions check found ' . count($violations) . " problem(s):\n  " . implode("\n  ", $violations) . "\n";
 if (preg_grep('/ TST-/', $violations) !== []) {
-    echo "Tests (TST-04..08, TST-27): every class and method tested, every fault case expected; see conventions TST.
-";
+    echo 'Tests (TST-04..08, TST-27): every class and method tested, every fault case expected; see conventions TST.
+';
 }
 if (preg_grep('/ UPD-/', $violations) !== []) {
     echo "Update system (UPD-01..03): signed releases, Addons build, module_key; see conventions UPD.\n";

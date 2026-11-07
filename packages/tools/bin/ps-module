@@ -3,14 +3,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -58,7 +58,10 @@
  *   ps-module context [--no-notes|--generate|--status]
  *                                    <repo>/CONTEXT.md: regenerate the overview and record that the Notes match the code
  *   ps-module index                  add the module's index.php to every directory that lacks one (not vendor/, never via symlinks)
- *   ps-module link | unlink          use the local libraries/* of the workspace (symlinked) instead of Packagist, and back
+ *   ps-module link | unlink          use the local libraries (single packages and the packages of the mono-<name>
+ *                                    monorepos) of the workspace, symlinked, instead of Packagist, and back
+ *   ps-module mono <command>         the monorepos of the package collection: new, package, validate, check,
+ *                                    check-release, set-version, packages, matrix, register (src/mono.php)
  *
  * Every command takes -v / --verbose (anywhere on the line; or PS_MODULE_VERBOSE=1): it then reports each step, every
  * program it runs (folder, exit code, time) and every remote action on STDERR, with secrets shown as ***.
@@ -170,6 +173,10 @@ switch ($command) {
         requireModule($moduleDir);
         exit(script('gitflow.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
 
+    case 'mono':
+        // The monorepos of the package collection (src/mono.php); works without a module.
+        exit(script('mono.php', $args));
+
     case 'context':
         requireModule($moduleDir);
         exit(script('context.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
@@ -239,9 +246,12 @@ switch ($command) {
             $composer['repositories'] ?? [],
             static fn (array $r): bool => !isLibrariesRepository((string) ($r['url'] ?? ''))
         ));
-        array_unshift($composer['repositories'], ['type' => 'path', 'url' => $librariesUrl, 'options' => ['symlink' => true]]);
+        // The monorepos first (docs/packages: one version per monorepo, given explicitly because the packages have
+        // no "version" of their own), then the single-package repos of before the collection (module-kit, ...).
+        $linked = array_merge(monorepoPathRepositories((string) $moduleDir, $librariesUrl), [['type' => 'path', 'url' => $librariesUrl, 'options' => ['symlink' => true]]]);
+        array_unshift($composer['repositories'], ...$linked);
         file_put_contents($composerFile, json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
-        echo "ps-module: linked $librariesUrl. Run 'ps-module unlink' before you commit (CI uses Packagist).\n";
+        echo 'ps-module: linked ' . implode(', ', array_column($linked, 'url')) . ". Run 'ps-module unlink' before you commit (CI uses Packagist).\n";
         exit(updateLibraries((string) $moduleDir));
 
     case 'unlink':
@@ -357,20 +367,49 @@ function librariesPathRepository(string $moduleDir): string
 {
     $up = '';
     for ($dir = dod_norm($moduleDir); $dir !== dirname($dir); $dir = dirname($dir), $up .= '../') {
-        if (is_file("$dir/libraries/module-dev-tools/composer.json") && $up !== '') {
+        if ((is_file("$dir/libraries/module-dev-tools/composer.json") || glob("$dir/libraries/mono-*/composer.json")) && $up !== '') {
             return $up . 'libraries/*';
         }
     }
-    fwrite(STDERR, "ps-module link: no libraries/module-dev-tools found in a parent directory of the module.\n");
+    fwrite(STDERR, "ps-module link: no libraries/ with module-dev-tools or a mono-* monorepo found in a parent directory of the module.\n");
     exit(1);
 }
 
 /**
- * True for the path repository that ps-module link adds (any number of ../ followed by libraries/*).
+ * One path repository per monorepo of the workspace (libraries/mono-* with packages/*), relative to the module like
+ * $librariesUrl, with the monorepo's one version for each of its packages (the packages carry no version themselves).
+ *
+ * @return list<array{type: string, url: string, options: array{symlink: bool, versions: array<string, string>}}>
+ */
+function monorepoPathRepositories(string $moduleDir, string $librariesUrl): array
+{
+    $up = substr($librariesUrl, 0, -strlen('libraries/*'));
+    $workspace = dod_norm((string) realpath($moduleDir . '/' . $up));
+    $repositories = [];
+    foreach (glob($workspace . '/libraries/mono-*/composer.json') ?: [] as $rootFile) {
+        $version = (string) (json_decode((string) file_get_contents($rootFile), true)['version'] ?? '');
+        $versions = [];
+        foreach (glob(dirname($rootFile) . '/packages/*/composer.json') ?: [] as $packageFile) {
+            $name = (string) (json_decode((string) file_get_contents($packageFile), true)['name'] ?? '');
+            if ($name !== '' && $version !== '') {
+                $versions[$name] = $version;
+            }
+        }
+        if ($versions !== []) {
+            $repositories[] = ['type' => 'path', 'url' => $up . 'libraries/' . basename(dirname($rootFile)) . '/packages/*', 'options' => ['symlink' => true, 'versions' => $versions]];
+        }
+    }
+
+    return $repositories;
+}
+
+/**
+ * True for a path repository that ps-module link adds: any number of ../ followed by libraries/* or
+ * libraries/mono-<name>/packages/*.
  */
 function isLibrariesRepository(string $url): bool
 {
-    return preg_match('#^(\.\./)+libraries/\*$#', $url) === 1;
+    return preg_match('#^(\.\./)+libraries/(\*|mono-[a-z0-9-]+/packages/\*)$#', $url) === 1;
 }
 
 /**

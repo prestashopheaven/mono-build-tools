@@ -1,0 +1,15 @@
+# CI of this monorepo: the shared monorepo CI (prestashopheaven/workflows, mono-ci.yml).
+# Runtime monorepos add the real-shop tests of their fixture module:
+#     with:
+#       shop-prestashop: '["8.1.0","8.1.7","8.2.8","9.0.3","9.1.5","9.2.0"]'
+#       fixture: tests/fixture/<module>
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+jobs:
+  ci:
+    uses: prestashopheaven/workflows/.github/workflows/mono-ci.yml@main

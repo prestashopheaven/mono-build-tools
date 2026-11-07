@@ -2,14 +2,14 @@
 /**
  * NOTICE OF LICENSE
  *
- * This source file is subject to the Academic Free License version 3.0
+ * This source file is subject to the MIT License
  * that is bundled with this package in the file LICENSE.md.
  * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/AFL-3.0
+ * https://opensource.org/licenses/MIT
  *
  * @author    George van Engers | PrestaHaven.com
  * @copyright Since 2026 George van Engers
- * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ * @license   https://opensource.org/licenses/MIT MIT License
  */
 
 /*
@@ -691,7 +691,7 @@ function tr_extract_smarty(string $code): array
         } elseif (!isset($attrs['d'])) {
             $problems[] = ['error', $line, "{l s='{$s['value']}'} has no domain: add d='Modules.<Module>.Shop' (TPL-08)."];
         } elseif ($attrs['d']['quote'] === null) {
-            $problems[] = ['error', $line, "The domain in {l d=…} is not a string literal."];
+            $problems[] = ['error', $line, 'The domain in {l d=…} is not a string literal.'];
         } else {
             $entries[] = [$s['value'], $attrs['d']['value'], $line];
         }
@@ -1762,7 +1762,7 @@ function tr_cmd_apply(array $ctx, array $args, array $options): int
         tr_save_catalogue($ctx, $iso, $catalogues[$iso]);
     }
     ps_vlog('translations: apply ' . ($file === '-' ? 'from stdin' : $file) . ($machine !== null ? ", marked machine ($machine)" : ', marked reviewed'));
-    echo "Applied $applied translation(s) to " . count($changed) . " catalogue(s)" . ($errors > 0 ? ", $errors rejected" : '') . ".\n";
+    echo "Applied $applied translation(s) to " . count($changed) . ' catalogue(s)' . ($errors > 0 ? ", $errors rejected" : '') . ".\n";
     tr_rebuild($ctx);
 
     return $errors > 0 ? 1 : 0;
@@ -2052,7 +2052,7 @@ function tr_cmd_check(array $ctx): int
         echo "  warning: $warning\n";
     }
     if ($errors === []) {
-        echo "Translations OK: $texts text(s) in " . (count($ctx['targets']) + 1) . ' language(s) (' . implode(' ', array_merge([$ctx['source']], $ctx['targets'])) . ")"
+        echo "Translations OK: $texts text(s) in " . (count($ctx['targets']) + 1) . ' language(s) (' . implode(' ', array_merge([$ctx['source']], $ctx['targets'])) . ')'
             . ($mails['files'] !== [] ? ', ' . count($mails['files']) . ' mail file(s)' : '') . ".\n";
 
         return 0;
