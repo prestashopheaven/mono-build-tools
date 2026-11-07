@@ -835,9 +835,9 @@ function isGuardExit(array $source, int $number): bool
 
 /**
  * Creates what a monorepo needs on GitHub (PKG-04): the monorepo repo itself, a public read-only repo per package, a
- * deploy key with write access per split repo (its private key as secret SPLIT_KEY_<KEY> of the monorepo), and the
- * secrets PACKAGIST_USERNAME / PACKAGIST_TOKEN from the workspace .env. Idempotent: existing repos, keys and secrets
- * are kept. Packagist itself is created by the first release (mono-release.yml).
+ * deploy key with write access per split repo (its private key as secret SPLIT_KEY_<KEY> of the monorepo), the
+ * Packagist webhook per split repo (so Packagist updates on every push), and the secrets PACKAGIST_USERNAME /
+ * PACKAGIST_TOKEN from the workspace .env. Idempotent: existing repos, keys, hooks and secrets are kept. Packagist itself is created by the first release (mono-release.yml).
  */
 function register(string $root, bool $dryRun): int
 {
@@ -877,11 +877,24 @@ function register(string $root, bool $dryRun): int
         }
     }
     $have = $dryRun ? [] : $secrets($monorepo);
+    $env = envValues(workspaceDir($root));
     foreach (packages($root) as $package) {
         $repo = $package['repo'];
         if (!$exists($repo)) {
             $description = repoDescription((string) ($package['composer']['description'] ?? ''), " (read-only split of $monorepo)");
             if ($run('gh repo create ' . escapeshellarg($repo) . ' --public --disable-issues --disable-wiki --description ' . escapeshellarg($description)) !== 0) {
+                return 1;
+            }
+        }
+        if (($env['PACKAGIST_USERNAME'] ?? '') !== '' && ($env['PACKAGIST_TOKEN'] ?? '') !== '') {
+            $hooks = '[]';
+            if (!$dryRun) {
+                exec('gh api ' . escapeshellarg("repos/$repo/hooks") . ' 2>&1', $out, $code);
+                $hooks = $code === 0 ? implode("\n", $out) : '[]';
+                $out = [];
+            }
+            if (!hasPackagistHook($hooks)
+                && $run('gh api ' . escapeshellarg("repos/$repo/hooks") . ' --method POST --input - --silent', $dryRun ? '' : packagistHook($env['PACKAGIST_USERNAME'], $env['PACKAGIST_TOKEN'])) !== 0) {
                 return 1;
             }
         }
@@ -901,7 +914,6 @@ function register(string $root, bool $dryRun): int
         @unlink($keyFile);
         @unlink("$keyFile.pub");
     }
-    $env = envValues(workspaceDir($root));
     foreach (['PACKAGIST_USERNAME', 'PACKAGIST_TOKEN'] as $name) {
         if (in_array($name, $have, true)) {
             continue;
@@ -917,6 +929,40 @@ function register(string $root, bool $dryRun): int
     echo "Registered $monorepo and its packages.\n";
 
     return 0;
+}
+
+/**
+ * The GitHub webhook that keeps a Packagist package up to date on every push (Packagist shows the package as
+ * "not auto-updated" without it): the Packagist API token is the webhook secret.
+ */
+function packagistHook(string $username, string $token): string
+{
+    return (string) json_encode([
+        'name' => 'web',
+        'active' => true,
+        'events' => ['push'],
+        'config' => [
+            'url' => 'https://packagist.org/api/github?username=' . rawurlencode($username),
+            'content_type' => 'json',
+            'insecure_ssl' => '0',
+            'secret' => $token,
+        ],
+    ], JSON_UNESCAPED_SLASHES);
+}
+
+/**
+ * True when a repo's webhooks (the JSON list of the GitHub API) already have the Packagist hook.
+ */
+function hasPackagistHook(string $hooksJson): bool
+{
+    $hooks = json_decode($hooksJson, true);
+    foreach (is_array($hooks) ? $hooks : [] as $hook) {
+        if (str_starts_with((string) ($hook['config']['url'] ?? ''), 'https://packagist.org/api/github')) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**

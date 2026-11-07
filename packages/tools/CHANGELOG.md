@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3] - 2026-11-07
+
+### Nieuw
+- `ps-module mono register` zet de Packagist-webhook (push, het Packagist-token als secret, via stdin) op elke
+  split-repo die hem nog niet heeft. Zonder die hook toont Packagist het package als "not auto-updated". Bestaande
+  hooks blijven staan; zonder `PACKAGIST_USERNAME`/`PACKAGIST_TOKEN` in de `.env` slaat hij de stap over.
+
 ## [1.0.2] - 2026-11-07
 
 ### Nieuw

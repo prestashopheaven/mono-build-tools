@@ -26,12 +26,14 @@ use function PrestaHavenMono\coverageProblems;
 use function PrestaHavenMono\envForWindows;
 use function PrestaHavenMono\envValues;
 use function PrestaHavenMono\fixtureTests;
+use function PrestaHavenMono\hasPackagistHook;
 use function PrestaHavenMono\isGuardExit;
 use function PrestaHavenMono\kind;
 use function PrestaHavenMono\main;
 use function PrestaHavenMono\newMonorepo;
 use function PrestaHavenMono\newPackage;
 use function PrestaHavenMono\packages;
+use function PrestaHavenMono\packagistHook;
 use function PrestaHavenMono\readJson;
 use function PrestaHavenMono\register;
 use function PrestaHavenMono\repoDescription;
@@ -507,6 +509,51 @@ final class MonoTest extends TestCase
         self::assertSame(0, $code);
         self::assertStringContainsString('[dry-run]', $output);
         self::assertStringContainsString('Registered prestashopheaven/', $output);
+    }
+
+    public function testRegisterAddsThePackagistHookWhenTheEnvironmentHasTheCredentials(): void
+    {
+        mkdir($this->root . '/libraries');
+        mkdir($this->root . '/modules');
+        file_put_contents($this->root . '/.env', "PACKAGIST_USERNAME=someone\nPACKAGIST_TOKEN=secret-token\n");
+        ob_start();
+        $code = register($this->root, true);
+        $output = (string) ob_get_clean();
+
+        self::assertSame(0, $code);
+        self::assertStringNotContainsString('secret-token', $output, 'The token goes through stdin, never in the command.');
+        if (packages($this->root) !== []) {
+            self::assertStringContainsString('/hooks\' --method POST --input - --silent', str_replace('"', "'", $output));
+        }
+    }
+
+    public function testThePackagistHookCarriesTheTokenAsItsSecret(): void
+    {
+        $hook = json_decode(packagistHook('some one', 'tok'), true);
+
+        self::assertSame(['push'], $hook['events']);
+        self::assertTrue($hook['active']);
+        self::assertSame('https://packagist.org/api/github?username=some%20one', $hook['config']['url']);
+        self::assertSame('json', $hook['config']['content_type']);
+        self::assertSame('tok', $hook['config']['secret']);
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: bool}>
+     */
+    public static function hookLists(): iterable
+    {
+        yield 'packagist' => ['[{"config":{"url":"https://packagist.org/api/github?username=x"}}]', true];
+        yield 'other hook' => ['[{"config":{"url":"https://example.com/hook"}}]', false];
+        yield 'no url' => ['[{"config":{}}]', false];
+        yield 'empty list' => ['[]', false];
+        yield 'not json' => ['gh: Not Found (HTTP 404)', false];
+    }
+
+    #[DataProvider('hookLists')]
+    public function testAnExistingPackagistHookIsFound(string $json, bool $expected): void
+    {
+        self::assertSame($expected, hasPackagistHook($json));
     }
 
     /**

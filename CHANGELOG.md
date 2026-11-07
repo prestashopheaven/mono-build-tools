@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.0.3
+
+- `prestashopheaven/build-tools` 1.0.3: `ps-module mono register` adds the Packagist webhook to every split repo, so
+  Packagist updates on each push and no longer shows the package as not auto-updated.
+
 ## 1.0.2
 
 - `prestashopheaven/build-tools` 1.0.2: `PS_TEST_BASE_PORT` overrides `testing.json > base_port` (CI uses 20000,
