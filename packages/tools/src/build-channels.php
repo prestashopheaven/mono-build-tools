@@ -72,7 +72,7 @@ function setModuleKey(string $mainFile, string $key): void
 }
 
 /**
- * The Addons stage: a copy of the direct stage without module-kit's updater notice (src/Updater, possibly scoped),
+ * The Addons stage: a copy of the direct stage without the updater notice of module-kit or runtime-kit (src/Updater, possibly scoped),
  * with the Addons module_key, and an autoloader that no longer knows the left-out classes. Fails when an
  * update-server URL is still in the code (REL-07: no PrestaHaven URLs in what Addons ships).
  */
@@ -81,7 +81,8 @@ function makeAddonsStage(string $stage, string $addonsStage, string $name, strin
     @mkdir($addonsStage, 0775, true);
     copyTree($stage, $addonsStage);
     $removed = 0;
-    foreach (glob("$addonsStage/vendor/*/module-kit/src/Updater", GLOB_ONLYDIR) ?: [] as $dir) {
+    // module-kit 1.x and its successor runtime-kit (package collection) carry the notice in src/Updater.
+    foreach (array_merge(glob("$addonsStage/vendor/*/module-kit/src/Updater", GLOB_ONLYDIR) ?: [], glob("$addonsStage/vendor/*/runtime-kit/src/Updater", GLOB_ONLYDIR) ?: []) as $dir) {
         removeChannelTree($dir);
         ++$removed;
     }

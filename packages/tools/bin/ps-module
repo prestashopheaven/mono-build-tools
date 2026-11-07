@@ -401,8 +401,12 @@ function monorepoPathRepositories(string $moduleDir, string $librariesUrl): arra
     $workspace = dod_norm((string) realpath($moduleDir . '/' . $up));
     $repositories = [];
     foreach (glob($workspace . '/libraries/mono-*/composer.json') ?: [] as $rootFile) {
-        if (dod_norm((string) realpath(dirname($rootFile))) === dod_norm((string) realpath($moduleDir))) {
-            continue; // a monorepo links the others; its own packages come from its packages/* already
+        $monorepo = dod_norm((string) realpath(dirname($rootFile)));
+        $self = dod_norm((string) realpath($moduleDir));
+        if ($monorepo === $self || str_starts_with($self . '/', $monorepo . '/')) {
+            // A monorepo links the others; its own packages come from its packages/* already. A module inside a
+            // monorepo (a fixture) keeps its own path repository (copied, so it works inside a test shop).
+            continue;
         }
         $version = (string) (json_decode((string) file_get_contents($rootFile), true)['version'] ?? '');
         $versions = [];
