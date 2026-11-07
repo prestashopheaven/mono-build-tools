@@ -237,7 +237,9 @@ switch ($command) {
         exit(0);
 
     case 'link':
-        // Local library development: use the workspace's libraries/* (symlinked) instead of Packagist.
+        // Local library development: use the workspace's libraries/* (symlinked) instead of Packagist. Also in the root
+        // of a monorepo (libraries/mono-*): then the other monorepos are linked.
+        $moduleDir = $moduleDir ?? monorepoRoot((string) getcwd());
         requireModule($moduleDir);
         $librariesUrl = librariesPathRepository((string) $moduleDir);
         $composerFile = $moduleDir . '/composer.json';
@@ -255,6 +257,7 @@ switch ($command) {
         exit(updateLibraries((string) $moduleDir));
 
     case 'unlink':
+        $moduleDir = $moduleDir ?? monorepoRoot((string) getcwd());
         requireModule($moduleDir);
         $composerFile = $moduleDir . '/composer.json';
         $composer = json_decode((string) file_get_contents($composerFile), true);
@@ -338,6 +341,17 @@ function findModuleDir(string $cwd): ?string
 }
 
 /**
+ * The root of the monorepo when $cwd is one (composer.json with extra.prestashopheaven.monorepo), else null.
+ */
+function monorepoRoot(string $cwd): ?string
+{
+    $cwd = dod_norm($cwd);
+    $composer = is_file("$cwd/composer.json") ? json_decode((string) file_get_contents("$cwd/composer.json"), true) : null;
+
+    return is_array($composer) && isset($composer['extra']['prestashopheaven']['monorepo']) ? $cwd : null;
+}
+
+/**
  * Stops with a clear message when the command needs a module directory.
  */
 function requireModule(?string $moduleDir): void
@@ -387,6 +401,9 @@ function monorepoPathRepositories(string $moduleDir, string $librariesUrl): arra
     $workspace = dod_norm((string) realpath($moduleDir . '/' . $up));
     $repositories = [];
     foreach (glob($workspace . '/libraries/mono-*/composer.json') ?: [] as $rootFile) {
+        if (dod_norm((string) realpath(dirname($rootFile))) === dod_norm((string) realpath($moduleDir))) {
+            continue; // a monorepo links the others; its own packages come from its packages/* already
+        }
         $version = (string) (json_decode((string) file_get_contents($rootFile), true)['version'] ?? '');
         $versions = [];
         foreach (glob(dirname($rootFile) . '/packages/*/composer.json') ?: [] as $packageFile) {

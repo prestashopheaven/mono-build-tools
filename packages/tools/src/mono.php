@@ -336,6 +336,11 @@ function checkRelease(string $root, string $version, bool $tagExists): array
     if ($tagExists) {
         $problems[] = "Tag v$version already exists.";
     }
+    foreach ((array) (root($root)['repositories'] ?? []) as $repository) {
+        if (is_array($repository) && ($repository['type'] ?? '') === 'path' && ($repository['url'] ?? '') !== 'packages/*') {
+            $problems[] = "composer.json: linked path repository {$repository['url']} (run ps-module unlink; a release uses Packagist).";
+        }
+    }
 
     return $problems;
 }

@@ -217,6 +217,16 @@ final class MonoTest extends TestCase
         self::assertStringContainsString('Tag v1.3.0 already exists.', $problems);
     }
 
+    public function testAReleaseRefusesLinkedPathRepositories(): void
+    {
+        $composer = readJson($this->root . '/composer.json');
+        $composer['repositories'][] = ['type' => 'path', 'url' => '../../libraries/mono-build-tools/packages/*'];
+        file_put_contents($this->root . '/composer.json', json_encode($composer));
+
+        self::assertSame([], validate($this->root), 'linking is fine while working');
+        self::assertStringContainsString('linked path repository ../../libraries/mono-build-tools/packages/*', implode("\n", checkRelease($this->root, '1.2.0', false)));
+    }
+
     public function testSetVersionUpdatesRootAliasesAndInternalConstraints(): void
     {
         setVersion($this->root, '2.0.0');
