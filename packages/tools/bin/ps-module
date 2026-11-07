@@ -1,0 +1,480 @@
+#!/usr/bin/env php
+<?php
+/**
+ * NOTICE OF LICENSE
+ *
+ * This source file is subject to the Academic Free License version 3.0
+ * that is bundled with this package in the file LICENSE.md.
+ * It is also available through the world-wide-web at this URL:
+ * https://opensource.org/licenses/AFL-3.0
+ *
+ * @author    George van Engers | PrestaHaven.com
+ * @copyright Since 2026 George van Engers
+ * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ */
+
+/*
+ * ps-module: development commands for PrestaHaven modules.
+ * Run inside the module directory (composer scripts do that automatically).
+ *
+ *   ps-module verify                 the full definition of done, in order, stops at the first failure:
+ *                                    (assets check,) check, validate, docs build, build, validate-zip, shops run, validator-api
+ *   ps-module assets [status|check|build]
+ *                                    JavaScript of the module (_dev/, views/js): build = npm ci + npm run build (typecheck,
+ *                                    lint, tests with 100% coverage, TypeScript bundle); check = sources, tests and views/js
+ *                                    match the last passing run (no Node needed) + stamp; fails for untested views/js
+ *   ps-module check                  composer "checks" (lint, cs, phpstan, compat, conventions, tests) + stamp
+ *   ps-module coverage               unit tests execute every line of src/Domain, Application, Presenter (TST-08)
+ *   ps-module conventions            docblocks, clean main class, DDD + CQRS architecture (DOC-01, MOD-01, ARCH)
+ *   ps-module phpstan [<ps-version>...]
+ *   ps-module validate [<dir|zip>]   validator pre-check of the source (default) or a zip
+ *   ps-module build                  ../dist/<module>.zip (direct build) and ../dist/addons/<module>.zip (Addons
+ *                                    build: no updater notice, module_key) (no-dev vendor, scoped, index.php everywhere)
+ *   ps-module validate-zip           validator pre-check of both zips
+ *   ps-module validator-api          upload the Addons zip to validator.prestashop.com (needs a key in .env)
+ *   ps-module shops <command> ...    PrestaShop test shops in Docker: doctor, run, up, down, integration, behat, upgrade, multistore
+ *   ps-module status [--json]        which definition-of-done steps passed on the current code
+ *   ps-module skip <step> "<reason>" mark a step that cannot run (reported to the user)
+ *   ps-module translations <command> extract | status | todo | apply | fill | auto | accept | prune | mails-ok | build | check
+ *   ps-module docs <command>         init | status | check | screenshots | frames | manual | marketing | build | mark-translated | preview | doctor:
+ *                                    manuals (HTML + PDF), Addons marketing texts, screenshots and framed screenshots in docs/
+ *   ps-module publish <command>      status [--check] | site | docs | demo | shop [--update] | done addons|shop | undo <step>:
+ *                                    release checklist per version (REL-08): Addons upload (by hand), docs site with the
+ *                                    PDF manuals of every language (SFTP), install/upgrade in the demo shop (SSH),
+ *                                    the product in the own sales shop (webservice, inactive, only on command)
+ *   ps-module demo-site <command>    check | install-prestashop | setup | config | status | snapshot | restore | test |
+ *                                    nightly | demo-mode on|off | settings | push | vps-snapshot: the demo shop (one shop
+ *                                    for all modules), reset to its snapshot and tested every night (resources/publish/demo-site.sh)
+ *   ps-module git <command>          status [--remote] | start <name> [--fix] | pr [--release=X.Y.Z --notes=… [--publish]] |
+ *                                    merge | finish | later: feature branches, commit, push, pull/merge request, merge,
+ *                                    clean up (GIT-01..07); --publish puts the Update-* trailers for the update server in
+ *                                    the PR, and merge squashes with them in the release commit
+ *   ps-module sign <zip> [options]   <zip>.sig for the update server (UPDATE_SIGNING_KEY); --trailers-from=HEAD reads the
+ *                                    Update-* trailers of the release commit (the release workflow)
+ *   ps-module update-keys generate | public | push-secret
+ *                                    the release signing key pair: private key into .env and the GitHub org secret
+ *   ps-module update backfill-signatures [--repo=owner/name] [--dry-run]
+ *                                    sign existing GitHub releases that have no <module>.zip.sig yet
+ *   ps-module context [--no-notes|--generate|--status]
+ *                                    <repo>/CONTEXT.md: regenerate the overview and record that the Notes match the code
+ *   ps-module index                  add the module's index.php to every directory that lacks one (not vendor/, never via symlinks)
+ *   ps-module link | unlink          use the local libraries/* of the workspace (symlinked) instead of Packagist, and back
+ *
+ * Every command takes -v / --verbose (anywhere on the line; or PS_MODULE_VERBOSE=1): it then reports each step, every
+ * program it runs (folder, exit code, time) and every remote action on STDERR, with secrets shown as ***.
+ * All commands and their options: COMMANDS.md in this package.
+ */
+
+declare(strict_types=1);
+
+$src = dirname(__DIR__) . '/src';
+require_once $src . '/dod.php';
+require_once $src . '/verbose.php';
+
+$args = array_slice($argv, 1);
+// -v / --verbose works for every command: the scripts started below inherit PS_MODULE_VERBOSE.
+if (array_intersect($args, ['-v', '--verbose']) !== []) {
+    $args = array_values(array_diff($args, ['-v', '--verbose']));
+    putenv('PS_MODULE_VERBOSE=1');
+}
+$command = array_shift($args) ?? 'help';
+$started = microtime(true);
+ps_vlog('ps-module ' . trim($command . ' ' . implode(' ', $args)) . '   (PHP ' . PHP_VERSION . ', ' . PHP_BINARY . ', in ' . getcwd() . ')');
+register_shutdown_function(static fn () => ps_vdone("ps-module $command", $started));
+
+$moduleDir = findModuleDir((string) getcwd());
+$repoDir = $moduleDir !== null ? dod_repo_dir($moduleDir) : null;
+ps_vlog('module: ' . ($moduleDir ?? '(none)') . ', repository: ' . ($repoDir ?? '(none)'));
+
+switch ($command) {
+    case 'check':
+        requireModule($moduleDir);
+        $code = run('composer run-script checks', $moduleDir);
+        if ($code === 0) {
+            // TST-08: the unit tests execute every line of Domain, Application and Presenter.
+            $code = script('coverage.php', [$moduleDir]);
+        }
+        if ($code === 0 && $repoDir !== null) {
+            dod_stamp($repoDir, 'check');
+            echo "ps-module: 'check' passed and is recorded for the current code.\n";
+        }
+        exit($code);
+
+    case 'coverage':
+        requireModule($moduleDir);
+        exit(script('coverage.php', [$moduleDir]));
+
+    case 'assets':
+        requireModule($moduleDir);
+        exit(script('assets.php', array_merge([(string) $moduleDir], $args)));
+
+    case 'conventions':
+        exit(script('conventions-check.php', array_merge([(string) ($moduleDir ?? getcwd())], $args)));
+
+    case 'phpstan':
+        exit(script('phpstan.php', $args));
+
+    case 'validate':
+        requireModule($moduleDir);
+        exit(script('validate.php', [$args[0] ?? $moduleDir]));
+
+    case 'build':
+        requireModule($moduleDir);
+        exit(script('build-zip.php', [$moduleDir]));
+
+    case 'sign':
+        require_once $src . '/update-sign.php';
+        exit(update_sign_cli($args));
+
+    case 'update-keys':
+    case 'update':
+        require_once $src . '/update-sign.php';
+        $workspace = update_workspace_dir((string) getcwd()) ?? update_workspace_dir(dirname(__DIR__));
+        if ($workspace === null) {
+            fwrite(STDERR, "ps-module $command: run it inside the modules workspace.\n");
+            exit(2);
+        }
+        if ($command === 'update-keys') {
+            exit(update_keys_cli($args, $workspace));
+        }
+        if (($args[0] ?? '') === 'backfill-signatures') {
+            exit(update_backfill_cli(array_slice($args, 1), $workspace));
+        }
+        if (($args[0] ?? '') === 'secret') {
+            exit(update_secret_cli(array_slice($args, 1), $workspace, (string) getcwd()));
+        }
+        fwrite(STDERR, "ps-module update backfill-signatures [--repo=owner/name ...] [--dry-run]\n"
+            . "ps-module update secret [--all | --repo=owner/name ...] [--check]\n");
+        exit(2);
+
+    case 'validate-zip':
+        requireModule($moduleDir);
+        // Both builds: the direct one (customers, update server) and the Addons one (what Addons gets).
+        $code = script('validate.php', [distZip($moduleDir)]);
+        if ($code === 0 && is_file(addonsZip($moduleDir))) {
+            $code = script('validate.php', [addonsZip($moduleDir)]);
+        }
+        exit($code);
+
+    case 'validator-api':
+        requireModule($moduleDir);
+        // The online validator checks what Addons gets: the Addons build when there is one.
+        $zip = $args[0] ?? (is_file(addonsZip($moduleDir)) ? addonsZip($moduleDir) : distZip($moduleDir));
+        exit(script('validator-api.php', array_merge([$zip], array_slice($args, 1))));
+
+    case 'shops':
+        requireModule($moduleDir);
+        exit(script('ps-test.php', $args, (string) $repoDir));
+
+    case 'git':
+        requireModule($moduleDir);
+        exit(script('gitflow.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
+
+    case 'context':
+        requireModule($moduleDir);
+        exit(script('context.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
+
+    case 'index':
+        requireModule($moduleDir);
+        exit(addIndexFiles((string) $moduleDir));
+
+    case 'translations':
+        requireModule($moduleDir);
+        exit(script('translations.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
+
+    case 'docs':
+        requireModule($moduleDir);
+        exit(script('docs.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
+
+    case 'publish':
+        requireModule($moduleDir);
+        exit(script('publish.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
+
+    case 'demo-site':
+        // The demo shop is not part of a module: also runs outside a module repo (e.g. in MODULES/demo-site).
+        exit(script('publish.php', array_merge([(string) ($moduleDir ?? getcwd()), 'demo-site'], $args), (string) ($repoDir ?? getcwd())));
+
+    case 'status':
+        requireRepo($repoDir);
+        $status = dod_status($repoDir);
+        if (in_array('--json', $args, true)) {
+            echo json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+        } else {
+            echo "Definition of done for {$status['module']}:\n";
+            foreach ($status['steps'] as $step => $s) {
+                $info = in_array($s['state'], ['ok', 'skipped'], true) ? $s['note'] : dod_command($step, $status['module']);
+                printf("  %-14s %-8s %s\n", $step, $s['state'], $info);
+            }
+            if (dod_validator_key((string) $repoDir) === '') {
+                echo "  validator-api  off      no PRESTASHOP_VALIDATOR_API_KEY in the environment or a .env above the repo:\n"
+                    . "                          upload ../dist/<module>.zip to https://validator.prestashop.com by hand, or set the key\n";
+            }
+            echo $status['complete'] ? "Complete.\n" : "Not complete.\n";
+            // The context file is not part of the definition of done, but the Stop hook asks for it too.
+            require_once $src . '/context.php';
+            $context = context_state((string) $repoDir);
+            echo 'Context:   CONTEXT.md ' . (!$context['exists'] ? 'missing (run ps-module context)'
+                : ($context['notes_current'] ? 'Notes match the current code' : 'Notes not updated since the last code change (update them, then ps-module context)')) . "\n";
+        }
+        exit($status['complete'] ? 0 : 1);
+
+    case 'skip':
+        requireRepo($repoDir);
+        [$step, $reason] = [$args[0] ?? '', trim($args[1] ?? '')];
+        if ($step === '' || $reason === '') {
+            fwrite(STDERR, "Usage: ps-module skip <step> \"<reason>\"\n");
+            exit(2);
+        }
+        dod_skip($repoDir, $step, $reason);
+        echo "ps-module: '$step' marked as skipped ($reason). Tell the user.\n";
+        exit(0);
+
+    case 'link':
+        // Local library development: use the workspace's libraries/* (symlinked) instead of Packagist.
+        requireModule($moduleDir);
+        $librariesUrl = librariesPathRepository((string) $moduleDir);
+        $composerFile = $moduleDir . '/composer.json';
+        $composer = json_decode((string) file_get_contents($composerFile), true);
+        $composer['repositories'] = array_values(array_filter(
+            $composer['repositories'] ?? [],
+            static fn (array $r): bool => !isLibrariesRepository((string) ($r['url'] ?? ''))
+        ));
+        array_unshift($composer['repositories'], ['type' => 'path', 'url' => $librariesUrl, 'options' => ['symlink' => true]]);
+        file_put_contents($composerFile, json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        echo "ps-module: linked $librariesUrl. Run 'ps-module unlink' before you commit (CI uses Packagist).\n";
+        exit(updateLibraries((string) $moduleDir));
+
+    case 'unlink':
+        requireModule($moduleDir);
+        $composerFile = $moduleDir . '/composer.json';
+        $composer = json_decode((string) file_get_contents($composerFile), true);
+        $composer['repositories'] = array_values(array_filter(
+            $composer['repositories'] ?? [],
+            static fn (array $r): bool => !isLibrariesRepository((string) ($r['url'] ?? ''))
+        ));
+        if ($composer['repositories'] === []) {
+            unset($composer['repositories']);
+        }
+        file_put_contents($composerFile, json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        echo "ps-module: back to the released packages from Packagist.\n";
+        exit(updateLibraries((string) $moduleDir));
+
+    case 'fingerprint':
+        requireRepo($repoDir);
+        echo dod_fingerprint($repoDir) . "\n";
+        exit(0);
+
+    case 'verify':
+        requireModule($moduleDir);
+        $repos = json_decode((string) file_get_contents($moduleDir . '/composer.json'), true)['repositories'] ?? [];
+        if (array_filter(array_column($repos, 'url'), static fn ($url): bool => isLibrariesRepository((string) $url)) !== []) {
+            fwrite(STDERR, "ps-module verify: local libraries are linked. Run 'ps-module unlink' first: CI and releases use Packagist.
+");
+            exit(1);
+        }
+        $required = dod_required_steps((string) $repoDir);
+        $steps = [
+            'check' => ['self', ['check']],
+            'validate-src' => ['self', ['validate']],
+        ];
+        // TypeScript (recipe typescript): the committed views/js must be the build of _dev/ before anything is checked.
+        if (in_array('assets', $required, true)) {
+            $steps = ['assets' => ['self', ['assets', 'check']]] + $steps;
+        }
+        // Docs before the build: the release zip ships the manuals (docs/readme_<iso>.pdf).
+        if (in_array('docs', $required, true)) {
+            $steps['docs'] = ['self', ['docs', 'build']];
+        }
+        $steps['build'] = ['self', ['build']];
+        $steps['validate-zip'] = ['self', ['validate-zip']];
+        if (in_array('shop-tests', $required, true)) {
+            $steps['shop-tests'] = ['self', ['shops', 'run']];
+        }
+        if (in_array('validator-api', $required, true)) {
+            $steps['validator-api'] = ['self', ['validator-api']];
+        }
+        foreach ($steps as $label => [, $sub]) {
+            echo "\n##### $label #####\n";
+            $code = run(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__FILE__) . ' ' . implode(' ', array_map('escapeshellarg', $sub)), $moduleDir);
+            if ($code !== 0) {
+                fwrite(STDERR, "\nps-module verify: '$label' failed. Fix it and run verify again.\n");
+                exit($code);
+            }
+        }
+        exit(run(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__FILE__) . ' status', $moduleDir));
+
+    default:
+        $help = (string) file_get_contents(__FILE__);
+        preg_match('#/\*\n(.*?)\*/#s', $help, $m);
+        echo trim(preg_replace('/^ \* ?/m', '', $m[1] ?? '')) . "\n";
+        exit($command === 'help' ? 0 : 2);
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Finds the module directory: the current directory when it holds <name>/<name>.php,
+ * otherwise the module named in module.spec.json of the repository.
+ */
+function findModuleDir(string $cwd): ?string
+{
+    $cwd = dod_norm($cwd);
+    if (is_file($cwd . '/' . basename($cwd) . '.php') && is_file($cwd . '/composer.json')) {
+        return $cwd;
+    }
+    $repo = dod_repo_dir($cwd);
+
+    return $repo !== null ? dod_module_dir($repo) : null;
+}
+
+/**
+ * Stops with a clear message when the command needs a module directory.
+ */
+function requireModule(?string $moduleDir): void
+{
+    if ($moduleDir === null) {
+        fwrite(STDERR, "ps-module: run this inside a module (a directory with <name>.php and composer.json).\n");
+        exit(2);
+    }
+}
+
+/**
+ * Stops with a clear message when the command needs a module repository.
+ */
+function requireRepo(?string $repoDir): void
+{
+    if ($repoDir === null) {
+        fwrite(STDERR, "ps-module: no module repository found (module.spec.json).\n");
+        exit(2);
+    }
+}
+
+/**
+ * Relative path repository from the module directory to the workspace's libraries/*: the nearest parent directory
+ * with libraries/module-dev-tools (modules/<repo>/<module> gives ../../../libraries/*, <repo>/<module> ../../libraries/*).
+ */
+function librariesPathRepository(string $moduleDir): string
+{
+    $up = '';
+    for ($dir = dod_norm($moduleDir); $dir !== dirname($dir); $dir = dirname($dir), $up .= '../') {
+        if (is_file("$dir/libraries/module-dev-tools/composer.json") && $up !== '') {
+            return $up . 'libraries/*';
+        }
+    }
+    fwrite(STDERR, "ps-module link: no libraries/module-dev-tools found in a parent directory of the module.\n");
+    exit(1);
+}
+
+/**
+ * True for the path repository that ps-module link adds (any number of ../ followed by libraries/*).
+ */
+function isLibrariesRepository(string $url): bool
+{
+    return preg_match('#^(\.\./)+libraries/\*$#', $url) === 1;
+}
+
+/**
+ * Copies the module's root index.php (with its license header, STR-03) into every directory that
+ * lacks one. Skips vendor/ (ps-module build handles it) and never follows symlinks or junctions,
+ * so linked libraries (ps-module link) are never touched.
+ */
+function addIndexFiles(string $moduleDir): int
+{
+    $template = $moduleDir . '/index.php';
+    if (!is_file($template)) {
+        fwrite(STDERR, "ps-module index: $template is missing; copy it from the skill template first.\n");
+
+        return 1;
+    }
+    // _dev/ holds TypeScript sources that never ship (ps-module build leaves it out).
+    $skip = ['vendor', '.cache', 'node_modules', '.git', '.idea', 'dist', '_dev'];
+    $root = str_replace('\\', '/', (string) realpath($moduleDir)) . '/';
+    // A directory whose real path lies outside the module is a symlink or junction: skip it.
+    $inside = static fn (string $path): bool => str_starts_with(str_replace('\\', '/', (string) realpath($path)) . '/', $root);
+    $it = new RecursiveIteratorIterator(
+        new RecursiveCallbackFilterIterator(
+            new RecursiveDirectoryIterator($moduleDir, FilesystemIterator::SKIP_DOTS),
+            static fn (SplFileInfo $f): bool => $f->isDir() && !$f->isLink() && !in_array($f->getFilename(), $skip, true)
+                && $inside($f->getPathname())
+        ),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+    $added = 0;
+    foreach ($it as $dir) {
+        $target = $dir->getPathname() . '/index.php';
+        if (!is_file($target)) {
+            copy($template, $target);
+            ++$added;
+        }
+    }
+    echo "ps-module index: added $added index.php file(s).\n";
+
+    return 0;
+}
+
+/**
+ * Runs `composer update "prestashopheaven/*"` after link/unlink. On Windows Composer cannot replace
+ * the module-dev-tools package while this script runs from it ("Permission denied"), so there the
+ * command is printed for the user to run instead.
+ */
+function updateLibraries(string $moduleDir): int
+{
+    $command = 'composer update "prestashopheaven/*" --no-interaction';
+    if (PHP_OS_FAMILY === 'Windows') {
+        echo "ps-module: composer.json is updated. Now run in $moduleDir:\n  $command\n"
+            . "(On Windows Composer cannot replace module-dev-tools while ps-module itself is running.)\n";
+
+        return 0;
+    }
+
+    return run($command, $moduleDir);
+}
+
+/**
+ * Path of the release zip of a module: <repo>/dist/<module>.zip.
+ */
+function distZip(string $moduleDir): string
+{
+    return dirname($moduleDir) . '/dist/' . basename($moduleDir) . '.zip';
+}
+
+/**
+ * Path of the Addons build: <repo>/dist/addons/<module>.zip (no updater notice, module_key from module.spec.json).
+ */
+function addonsZip(string $moduleDir): string
+{
+    return dirname($moduleDir) . '/dist/addons/' . basename($moduleDir) . '.zip';
+}
+
+/**
+ * Runs one of the scripts in src/ with the given arguments in the given directory.
+ *
+ * @param string[] $args
+ */
+function script(string $file, array $args, string $cwd = ''): int
+{
+    $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/src/' . $file)
+        . ($args === [] ? '' : ' ' . implode(' ', array_map('escapeshellarg', $args)));
+
+    return run($command, $cwd !== '' ? $cwd : (string) getcwd());
+}
+
+/**
+ * Runs a shell command in a directory, streaming its output, and returns the exit code.
+ */
+function run(string $command, ?string $cwd): int
+{
+    $previous = getcwd();
+    if ($cwd !== null && $cwd !== '') {
+        chdir($cwd);
+    }
+    ps_vcmd($command, (string) getcwd());
+    $start = microtime(true);
+    passthru($command, $code);
+    ps_vdone('command', $start, (int) $code);
+    if ($previous !== false) {
+        chdir($previous);
+    }
+
+    return (int) $code;
+}

@@ -1,0 +1,90 @@
+<!doctype html>
+<!--
+  Frame template of this module: every screenshot is rendered into this page, one image per screenshot
+  and language (docs/framed/<iso>/<id>.png). The look is in frame.css next to this file.
+
+  THIS FILE IS YOURS. 'ps-module docs init' created it once and no tool changes it afterwards.
+  Change the markup as you like, but keep {{css}}, {{image}} and {{title}}, and the script at the end
+  (it scales the screenshot and must set document.body.dataset.ready = '1').
+  Images next to this file can be used with src="name.png"; they are embedded when rendering.
+
+  Placeholders (HTML-escaped, except {{css}}, {{image}}, {{text_html}} and {{logo_html}}):
+  {{lang}} {{dir}}            language and writing direction (ltr | rtl)
+  {{css}}                     the variables set by ps-module + frame.css
+  {{title}} {{text_html}}     the caption of docs/content/<iso>/screenshots.json (text_html may be empty)
+  {{image}}                   the screenshot
+  {{device}}                  desktop | tablet | mobile | element (clipped to a selector) | custom
+  {{layout}}                  landscape | portrait (phone or tablet upright)
+  {{caption}}                 top | bottom (docs/docs.json > frame.caption)
+  {{area}}                    bo | fo
+  {{display_name}}            module name in the language;  {{logo_html}}  the module logo (or empty)
+  {{number}} {{count}}        "1" and "4" of 4 screenshots (empty with frame.counter = false)
+  {{address}} {{id}}          docs.json > frame.address; the screenshot id
+-->
+<html lang="{{lang}}" dir="{{dir}}">
+<head>
+<meta charset="utf-8">
+<meta name="generator" content="ps-module docs frame">
+<style>
+{{css}}
+</style>
+</head>
+<body class="device-{{device}} layout-{{layout}} area-{{area}} caption-{{caption}}">
+<main class="canvas">
+  <section class="frame">
+    <header class="caption">
+      <span class="caption-mark" aria-hidden="true"></span>
+      <h1>{{title}}</h1>
+      {{text_html}}
+    </header>
+    <div class="stage">
+      <figure class="device">
+        <div class="chrome" aria-hidden="true"><span class="dots"><i></i><i></i><i></i></span><span class="address">{{address}}</span></div>
+        <div class="screen"><img class="shot" src="{{image}}" alt=""></div>
+      </figure>
+    </div>
+    <footer class="brand">
+      {{logo_html}}<span class="brand-name">{{display_name}}</span><span class="counter">{{number}} / {{count}}</span>
+    </footer>
+  </section>
+</main>
+<script>
+// Scales the screenshot to the space that is left next to or under the caption, then marks the page ready.
+(function () {
+  var img = document.querySelector('.shot');
+  var stage = document.querySelector('.stage');
+  var device = document.querySelector('.device');
+  var chrome = document.querySelector('.chrome');
+  function fit() {
+    var cs = getComputedStyle(device);
+    var px = function (v) { return parseFloat(v) || 0; };
+    var extraW = px(cs.borderLeftWidth) + px(cs.borderRightWidth) + px(cs.paddingLeft) + px(cs.paddingRight);
+    var extraH = px(cs.borderTopWidth) + px(cs.borderBottomWidth) + px(cs.paddingTop) + px(cs.paddingBottom) + (chrome.offsetParent ? chrome.offsetHeight : 0);
+    var availW = stage.clientWidth - extraW - parseFloat(cs.marginLeft) - parseFloat(cs.marginRight);
+    var availH = stage.clientHeight - extraH - parseFloat(cs.marginTop) - parseFloat(cs.marginBottom);
+    var w = img.naturalWidth, h = img.naturalHeight;
+    var r = Math.min(availW / w, availH / h);
+    var width = w * r, height = h * r;
+    if (width < availW * 0.45 && !document.body.classList.contains('device-mobile') && !document.body.classList.contains('device-tablet')) {
+      // A very tall (full-page) screenshot: show its top part, as wide as possible.
+      width = Math.min(availW, w);
+      height = availH;
+      img.style.objectFit = 'cover';
+      img.style.objectPosition = 'top';
+    }
+    img.style.width = Math.floor(width) + 'px';
+    img.style.height = Math.floor(height) + 'px';
+    document.body.dataset.ready = '1';
+  }
+  function start() {
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
+      img.style.width = '1px';
+      img.style.height = '1px';
+      requestAnimationFrame(fit);
+    });
+  }
+  if (img.complete && img.naturalWidth) { start(); } else { img.addEventListener('load', start); img.addEventListener('error', function () { document.body.dataset.ready = 'error'; }); }
+})();
+</script>
+</body>
+</html>
