@@ -161,7 +161,8 @@ JavaScript of the module (`<module>/_dev/`, `views/js/`). Default `status`.
 `<repo>/testing.json`.
 - **Versions:** `<version>` is `X.Y.Z`.
 - **Port:** `base_port` (default 8000) + major×100 + minor×10 + patch. For example, 9.2.0 runs on
-  http://localhost:8920.
+  http://localhost:8920. The environment variable `PS_TEST_BASE_PORT` replaces `base_port` (the monorepo CI sets
+  20000, outside the ephemeral port range of the GitHub runners).
 - **Back office:** `/admin-dev/`, login `demo@prestashop.com` / `prestashop_demo`.
 - **Compose project:** `<module>-ps<version without dots>`.
 - **Flags:** unknown `--` flags are ignored.

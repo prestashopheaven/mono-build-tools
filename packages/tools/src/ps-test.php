@@ -40,6 +40,7 @@
 require_once __DIR__ . '/dod.php';
 require_once __DIR__ . '/composer-paths.php';
 require_once __DIR__ . '/verbose.php';
+require_once __DIR__ . '/shop-port.php';
 require_once __DIR__ . '/ps-multistore.php';
 require_once __DIR__ . '/lock.php';
 
@@ -72,7 +73,7 @@ ps_vlog("shops $command: arguments " . json_encode($args) . ', flags ' . json_en
 ps_vlog('testing.json: module ' . $module . ', versions ' . implode(', ', (array) $config['versions'])
     . ', suites ' . json_encode($config['suites'] ?? []) . ', upgrade_from ' . ($config['upgrade_from'] ?? 'none')
     . ', multistore ' . json_encode($config['multistore'] ?? false) . ', db_image ' . ($config['db_image'] ?? 'mysql:8.0')
-    . ', base_port ' . ($config['base_port'] ?? 8000));
+    . ', base_port ' . ($config['base_port'] ?? 8000) . (getenv('PS_TEST_BASE_PORT') ? ' (PS_TEST_BASE_PORT ' . getenv('PS_TEST_BASE_PORT') . ')' : ''));
 
 // The shops of this module are used by one command at a time: a second terminal or Claude session working on the same
 // module waits here instead of stopping the shops under the first one (lock.php). Other modules have their own shops.
@@ -177,8 +178,7 @@ final class Shop
      */
     public function __construct(public readonly string $version, private readonly array $config)
     {
-        $parts = array_map('intval', explode('.', $version));
-        $this->port = (int) ($config['base_port'] ?? 8000) + $parts[0] * 100 + $parts[1] * 10 + ($parts[2] ?? 0);
+        $this->port = shop_port($config, $version);
         $this->project = $config['module'] . '-ps' . str_replace('.', '', $version);
         ps_vlog("shop PrestaShop $version: port {$this->port}, compose project {$this->project}, database image "
             . ($config['db_image'] ?? 'mysql:8.0') . ', compose file ' . COMPOSE_FILE);

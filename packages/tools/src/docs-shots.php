@@ -30,6 +30,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/verbose.php';
+require_once __DIR__ . '/shop-port.php';
 require_once __DIR__ . '/lock.php';
 
 /**
@@ -326,9 +327,7 @@ function docs_shop_version(array $ctx): string
  */
 function docs_shop_port(array $ctx, string $version): int
 {
-    $parts = array_map('intval', explode('.', $version));
-
-    return (int) ($ctx['testing']['base_port'] ?? 8000) + $parts[0] * 100 + ($parts[1] ?? 0) * 10 + ($parts[2] ?? 0);
+    return shop_port((array) ($ctx['testing'] ?? []), $version);
 }
 
 /**

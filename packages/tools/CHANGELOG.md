@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2] - 2026-11-07
+
+### Nieuw
+- `PS_TEST_BASE_PORT` overschrijft `testing.json > base_port` voor de testwinkels (`shops`, `docs`). De monorepo-CI zet
+  hem op 20000: de 5xxxx-poorten vallen in het ephemeral-bereik van de GitHub-runners, waar een poort soms al bezet is
+  ("address already in use", gezien op core 9.2.0 en integration 8.2.8). De poortberekening staat nu op één plek
+  (`src/shop-port.php`).
+
 ## [1.0.1] - 2026-11-07
 
 ### Opgelost

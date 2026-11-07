@@ -1,7 +1,7 @@
 {
     "name": "prestashopheaven/mono-build-tools",
     "description": "The PrestaHaven module factory: the ps-module command and its tools (build packages).",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "type": "project",
     "license": "MIT",
     "repositories": [
@@ -11,7 +11,7 @@
             "options": {
                 "symlink": true,
                 "versions": {
-                    "prestashopheaven/build-tools": "1.0.1"
+                    "prestashopheaven/build-tools": "1.0.2"
                 }
             }
         }

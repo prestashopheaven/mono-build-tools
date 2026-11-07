@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.0.2
+
+- `prestashopheaven/build-tools` 1.0.2: `PS_TEST_BASE_PORT` overrides `testing.json > base_port` (CI uses 20000,
+  outside the runners' ephemeral port range).
+
 ## 1.0.1
 
 - `prestashopheaven/build-tools` 1.0.1: the coverage gate of `ps-module mono check` no longer counts the `if` of the
