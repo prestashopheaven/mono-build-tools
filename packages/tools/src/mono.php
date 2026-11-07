@@ -809,14 +809,19 @@ function removeTree(string $dir): void
 }
 
 /**
- * True when line $number (1-based) is the `exit;` of the `if (!defined('_PS_VERSION_')) { exit; }` guard at the top
- * of a PrestaShop file: it never runs in a test, so the coverage gate does not count it.
+ * True when line $number (1-based) is part of the `if (!defined('_PS_VERSION_')) { exit; }` guard at the top of a
+ * PrestaShop file, so the coverage gate does not count it: the `exit;` never runs in a test, and the `if` (a statement
+ * on PHP 8.1) runs when the class loads, which is often before coverage starts (a data provider, the bootstrap).
  *
  * @param list<string> $source the lines of the file
  */
 function isGuardExit(array $source, int $number): bool
 {
-    if (trim($source[$number - 1] ?? '') !== 'exit;') {
+    $line = trim($source[$number - 1] ?? '');
+    if (str_contains($line, "defined('_PS_VERSION_')")) {
+        return trim($source[$number] ?? '') === 'exit;';
+    }
+    if ($line !== 'exit;') {
         return false;
     }
     for ($i = $number - 2; $i >= 0 && $i >= $number - 3; --$i) {

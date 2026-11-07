@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1] - 2026-11-07
+
+### Opgelost
+- `ps-module mono check`: de coverage-gate telt ook de `if (!defined('_PS_VERSION_'))` van de guard niet mee. PHP 8.1
+  ziet die als statement en hij draait al als de klasse laadt, vaak voordat de coverage begint; daardoor faalde de gate
+  in CI (PHP 8.1) op `runtime-core` terwijl hij lokaal 100 % gaf.
+
 ## [1.0.0] - 2026-11-07
 
 ### Gewijzigd

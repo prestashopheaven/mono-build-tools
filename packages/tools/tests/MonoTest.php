@@ -329,7 +329,7 @@ final class MonoTest extends TestCase
         $real = str_replace('\\', '/', (string) realpath($src));
         $clover = $this->root . '/clover.xml';
         file_put_contents($clover, '<?xml version="1.0"?><coverage><project>'
-            . '<file name="' . $real . '/Guarded.php"><line num="2" type="stmt" count="1"/><line num="3" type="stmt" count="0"/><line num="5" type="stmt" count="1"/></file>'
+            . '<file name="' . $real . '/Guarded.php"><line num="2" type="stmt" count="0"/><line num="3" type="stmt" count="0"/><line num="5" type="stmt" count="1"/></file>'
             . '<file name="' . $real . '/Shop.php"><line num="2" type="stmt" count="0"/></file>'
             . '</project></coverage>');
 
@@ -338,11 +338,15 @@ final class MonoTest extends TestCase
         $output = (string) ob_get_clean();
 
         self::assertSame([], $problems);
-        self::assertStringContainsString('prestashopheaven/runtime-kit: 100 % of 2 lines', $output);
+        self::assertStringContainsString('prestashopheaven/runtime-kit: 100 % of 1 lines', $output);
         self::assertSame([], validate($this->root));
         self::assertTrue(isGuardExit(['<?php', "if (!defined('_PS_VERSION_')) {", '    exit;'], 3));
         self::assertFalse(isGuardExit(['<?php', 'if ($x) {', '    exit;'], 3));
         self::assertFalse(isGuardExit(['<?php', '$a = 1;'], 2));
+        // PHP 8.1 also reports the guard's `if` as a statement; it runs when the class loads, often before coverage starts
+        self::assertTrue(isGuardExit(['<?php', "if (!defined('_PS_VERSION_')) {", '    exit;'], 2));
+        self::assertFalse(isGuardExit(['<?php', "if (!defined('_PS_VERSION_')) {", '    return;'], 2));
+        self::assertFalse(isGuardExit(['<?php', "if (!defined('OTHER')) {", '    exit;'], 2));
     }
 
     public function testAnIntegrationTestedFileNeedsItsIntegrationTest(): void
