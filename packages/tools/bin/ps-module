@@ -62,6 +62,15 @@
  *                                    monorepos) of the workspace, symlinked, instead of Packagist, and back
  *   ps-module mono <command>         the monorepos of the package collection: new, package, validate, check,
  *                                    check-release, set-version, packages, matrix, register (src/mono.php)
+ *   ps-module find "<need>" [--external]
+ *                                    search the package index first (PKG-01); --external searches Packagist and npm
+ *   ps-module ps find "<term>" | ps check [<module-dir>]
+ *                                    the PrestaShop index: classes, methods, hooks, services per release; check = every
+ *                                    PrestaShop symbol the module uses exists in its whole range (also in 'check')
+ *   ps-module external check <package>[:<constraint>] | external find "<need>"
+ *                                    compatibility check of an external package (B1-B8; exit 0 = use, 1 = write our own)
+ *   (find, ps and external need the packages of mono-build-knowledge: build-package-index, build-prestashop-index,
+ *   build-external)
  *
  * Every command takes -v / --verbose (anywhere on the line; or PS_MODULE_VERBOSE=1): it then reports each step, every
  * program it runs (folder, exit code, time) and every remote action on STDERR, with secrets shown as ***.
@@ -96,6 +105,13 @@ switch ($command) {
         if ($code === 0) {
             // TST-08: the unit tests execute every line of Domain, Application and Presenter.
             $code = script('coverage.php', [$moduleDir]);
+        }
+        // PKG-03: every PrestaShop class, method and hook the module uses exists in its whole PrestaShop range (only
+        // with build-prestashop-index installed: modules on module-dev-tools do not have it).
+        $psIndex = knowledgeScript('prestashop-index', 'prestashop-index.php', (string) $moduleDir);
+        if ($code === 0 && $psIndex !== null) {
+            echo "\n##### ps check #####\n";
+            $code = run(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($psIndex) . ' check ' . escapeshellarg((string) $moduleDir), $moduleDir);
         }
         if ($code === 0 && $repoDir !== null) {
             dod_stamp($repoDir, 'check');
@@ -176,6 +192,35 @@ switch ($command) {
     case 'mono':
         // The monorepos of the package collection (src/mono.php); works without a module.
         exit(script('mono.php', $args));
+
+    case 'find':
+        // PKG-01: search the package index first; --external searches Packagist and npm (and checks the best hits).
+        $external = in_array('--external', $args, true);
+        $args = array_values(array_diff($args, ['--external']));
+        exit(knowledge($external ? 'external' : 'package-index', $external ? 'external.php' : 'package-index.php', array_merge(['find'], $args), $moduleDir));
+
+    case 'ps':
+        // The PrestaShop index: ps find "<term>" | ps check [<module-dir>] (PKG-03).
+        $sub = array_shift($args) ?? '';
+        if (!in_array($sub, ['find', 'check'], true)) {
+            fwrite(STDERR, "ps-module ps: use 'ps find \"<term>\"' or 'ps check [<module-dir>]'.\n");
+            exit(2);
+        }
+        if ($sub === 'check' && ($args === [] || str_starts_with($args[0], '--'))) {
+            requireModule($moduleDir);
+            array_unshift($args, (string) $moduleDir);
+        }
+        exit(knowledge('prestashop-index', 'prestashop-index.php', array_merge([$sub], $args), $moduleDir));
+
+    case 'external':
+        // The external package check: external check <package>[:<constraint>] (exit 0 = use, 1 = write our own), or
+        // external find "<need>" (PKG-12..15).
+        $sub = $args[0] ?? '';
+        if (!in_array($sub, ['find', 'check'], true)) {
+            fwrite(STDERR, "ps-module external: use 'external check <package>[:<constraint>]' or 'external find \"<need>\"'.\n");
+            exit(2);
+        }
+        exit(knowledge('external', 'external.php', $args, $moduleDir));
 
     case 'context':
         requireModule($moduleDir);
@@ -517,6 +562,46 @@ function script(string $file, array $args, string $cwd = ''): int
         . ($args === [] ? '' : ' ' . implode(' ', array_map('escapeshellarg', $args)));
 
     return run($command, $cwd !== '' ? $cwd : (string) getcwd());
+}
+
+/**
+ * The script bin/$script of the knowledge package prestashopheaven/build-$package (monorepo mono-build-knowledge): from
+ * the vendor/ of the module (or of the current directory), else from libraries/mono-build-knowledge of the workspace
+ * (a parent directory). Null when neither has it.
+ */
+function knowledgeScript(string $package, string $script, ?string $moduleDir): ?string
+{
+    foreach (array_filter([$moduleDir, (string) getcwd()]) as $dir) {
+        $file = dod_norm((string) $dir) . "/vendor/prestashopheaven/build-$package/bin/$script";
+        if (is_file($file)) {
+            return $file;
+        }
+    }
+    for ($dir = dod_norm((string) getcwd()); $dir !== dirname($dir); $dir = dirname($dir)) {
+        $file = "$dir/libraries/mono-build-knowledge/packages/$package/bin/$script";
+        if (is_file($file)) {
+            return $file;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Runs a script of a knowledge package with $args, or stops with how to get it.
+ *
+ * @param list<string> $args
+ */
+function knowledge(string $package, string $script, array $args, ?string $moduleDir): int
+{
+    $file = knowledgeScript($package, $script, $moduleDir);
+    if ($file === null) {
+        fwrite(STDERR, "ps-module: prestashopheaven/build-$package is not installed: composer require --dev prestashopheaven/build-$package\n");
+
+        return 2;
+    }
+
+    return run(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($file) . ' ' . implode(' ', array_map('escapeshellarg', $args)), (string) getcwd());
 }
 
 /**

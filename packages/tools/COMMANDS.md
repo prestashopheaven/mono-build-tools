@@ -70,7 +70,9 @@ Refuses (exit 1) while local libraries are linked (`ps-module unlink` first). No
 
 ### `ps-module check` *(module)*
 Runs `composer run-script checks` (lint, code style, PHPStan, PHP compatibility, conventions, translations, unit
-tests), then `coverage`. When both pass, it records the stamp `check`. No options.
+tests), then `coverage`, then `ps check` when the module has `prestashopheaven/build-prestashop-index` (every
+PrestaShop class, method and hook it uses exists in its whole PrestaShop range). When all pass, it records the stamp
+`check`. No options.
 
 ### `ps-module coverage` *(module)*
 The unit tests must execute every line of `src/Domain/`, `src/Application/` and `src/Presenter/` (TST-08).
@@ -446,6 +448,20 @@ the signature covers the raw statement bytes.
 | `ps-module link` *(module)* | Uses the workspace's `libraries/*` (symlinked) instead of Packagist. Run `unlink` before you commit. |
 | `ps-module unlink` *(module)* | Back to the released packages from Packagist. |
 | `ps-module help` | The short overview. |
+
+## Package collection: search and checks (`find`, `ps`, `external`)
+
+These run the scripts of the packages of `mono-build-knowledge`: from the module's `vendor/`, else from
+`libraries/mono-build-knowledge` of the workspace. Without them: exit 2 with the `composer require` line.
+
+| Command | What it does |
+|---|---|
+| `ps-module find "<need>" [--limit=N] [--json]` | Searches the package index (packages, classes, methods) first (PKG-01); each hit has its `composer require` line. |
+| `ps-module find --external "<need>" [--limit=N] [--checked=N] [--no-npm]` | Searches Packagist and npm and checks the best hits. |
+| `ps-module ps find "<term>" [--limit=N] [--json]` | The PrestaShop index: classes, methods, hooks, services, config keys, tables, per release. |
+| `ps-module ps check [<module-dir>] [--ps-min=X --ps-max=Y]` | Every PrestaShop class, method and hook the module uses exists in its whole range (from `module.spec.json`); deprecations and changed signatures are warnings. Exit 1 on errors. Also in `check`. |
+| `ps-module external check <package>[:<constraint>] [--quick] [--json] [--record=<file> --for=X --used-in=Y]` | The compatibility check B1–B8 of an external package (exit 0 = use, 1 = write our own); `--record` adds the row to the register. |
+| `ps-module external find "<need>"` | The same search as `find --external`. |
 
 ## Server scripts
 

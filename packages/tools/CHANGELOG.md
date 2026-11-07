@@ -14,6 +14,9 @@
 - `ps-module mono`: `new`, `package`, `validate`, `check` (de definition of done van elk package: regels, lint,
   coding standard, PHPStan per PrestaShop-versie, PHP-compatibiliteit, conventies, unit-tests met coverage-gate),
   `check-release`, `set-version`, `packages`, `matrix`, `register` (GitHub-repo's, deploy keys, secrets).
+- `ps-module find "<behoefte>" [--external]`, `ps-module ps find|check` en `ps-module external check|find`: de
+  package-index, de PrestaShop-index en de externe check van `mono-build-knowledge`. `check` draait ook `ps check` als
+  de module `build-prestashop-index` heeft.
 
 ## [1.26.0] - 2026-11-02
 
