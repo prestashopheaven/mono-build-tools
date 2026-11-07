@@ -399,6 +399,21 @@ function setVersion(string $root, string $version): void
         }
         writeJson($root . '/' . $package['dir'] . '/composer.json', $p);
     }
+    // Fixture modules (tests/fixture/<module>) require the packages of this monorepo at exactly its version.
+    foreach (glob($root . '/tests/fixture/*/composer.json') ?: [] as $file) {
+        $fixture = readJson($file);
+        foreach ((array) ($fixture['repositories'] ?? []) as $i => $repository) {
+            if (is_array($repository) && ($repository['url'] ?? '') === '../../../packages/*') {
+                $fixture['repositories'][$i]['options']['versions'] = $versions;
+            }
+        }
+        foreach (array_keys((array) ($fixture['require'] ?? [])) as $dependency) {
+            if (in_array($dependency, $own, true)) {
+                $fixture['require'][$dependency] = $version;
+            }
+        }
+        writeJson($file, $fixture);
+    }
 }
 
 /**

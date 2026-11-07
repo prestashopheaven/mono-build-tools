@@ -244,6 +244,22 @@ final class MonoTest extends TestCase
         self::assertSame([], validate($this->root));
     }
 
+    public function testSetVersionAlsoMovesTheFixtureModules(): void
+    {
+        mkdir($this->root . '/tests/fixture/heavenfoo', 0777, true);
+        file_put_contents($this->root . '/tests/fixture/heavenfoo/composer.json', json_encode([
+            'repositories' => [['type' => 'path', 'url' => '../../../packages/*', 'options' => ['symlink' => false, 'versions' => ['prestashopheaven/runtime-kit' => '1.2.0']]]],
+            'require' => ['php' => '>=8.1', 'prestashopheaven/runtime-kit' => '1.2.0', 'other/package' => '^3.0'],
+        ]));
+
+        setVersion($this->root, '1.3.0');
+
+        $fixture = readJson($this->root . '/tests/fixture/heavenfoo/composer.json');
+        self::assertSame('1.3.0', $fixture['require']['prestashopheaven/runtime-kit']);
+        self::assertSame('^3.0', $fixture['require']['other/package']);
+        self::assertSame(['prestashopheaven/runtime-cqrs' => '1.3.0', 'prestashopheaven/runtime-kit' => '1.3.0'], $fixture['repositories'][0]['options']['versions']);
+    }
+
     public function testThePhpstanConfigListsTheSourcesAndUnitTestsOfEveryPackage(): void
     {
         mkdir($this->root . '/packages/kit/tests/Unit', 0777, true);
