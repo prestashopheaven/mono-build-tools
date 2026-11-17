@@ -2,6 +2,13 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.0.4
+
+- `prestashopheaven/build-tools` 1.0.4: the multistore check of the configuration page (`ps-module shops run`) reads
+  the field after a multistore checkbox again. Its form parser let every `<input>` swallow the page up to the next
+  `</select>` or `</textarea>`, so in a shop or group context the checked field was lost and the check reported "the page
+  does not show the own value" for a page that does.
+
 ## 1.0.3
 
 - `prestashopheaven/build-tools` 1.0.3: `ps-module mono register` adds the Packagist webhook to every split repo, so

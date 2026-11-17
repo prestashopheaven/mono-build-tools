@@ -579,7 +579,27 @@ function msFormPage(string $jar, string $url, string $context): array|string
     if ($status !== 200) {
         return "configuration page ($context): HTTP $status ($final)";
     }
-    // The settings form is the Symfony form with a CSRF field "<name>[_token]" (not the header search).
+    $page = msParseFormPage($html, $final);
+    if (is_string($page)) {
+        return 'configuration page (' . ($context === '' ? 'all shops' : $context) . "): $page";
+    }
+
+    return $page;
+}
+
+/**
+ * Reads the settings form of a configuration page: the Symfony form with a CSRF field "<name>[_token]" (not the header
+ * search), its action as an absolute URL, the fields a browser sends (checked checkboxes and radios, the selected
+ * option, no disabled fields), every checkbox with its value, and the text inputs in page order (also disabled ones: in
+ * a shop context the checkbox enables them). Only a textarea and a select have content; an input is one tag, so the
+ * field after a multistore checkbox is read as a field of its own.
+ *
+ * @param string $final the URL of the page (base of a relative action)
+ *
+ * @return array{action: string, fields: array<string, string>, checkboxes: array<string, string>, text: string[]}|string the form, or the reason there is none
+ */
+function msParseFormPage(string $html, string $final): array|string
+{
     preg_match_all('#<form\b([^>]*)>(.*?)</form>#is', $html, $forms, PREG_SET_ORDER);
     $form = null;
     foreach ($forms as $candidate) {
@@ -589,7 +609,7 @@ function msFormPage(string $jar, string $url, string $context): array|string
         }
     }
     if ($form === null) {
-        return 'configuration page (' . ($context === '' ? 'all shops' : $context) . '): no Symfony form found';
+        return 'no Symfony form found';
     }
     preg_match('/action="([^"]*)"/', $form[1], $action);
     $target = html_entity_decode($action[1] ?? $final);
@@ -597,16 +617,21 @@ function msFormPage(string $jar, string $url, string $context): array|string
         $target = (string) preg_replace('#^(https?://[^/]+).*$#', '$1', $final) . $target;
     }
     $page = ['action' => $target, 'fields' => [], 'checkboxes' => [], 'text' => []];
-    preg_match_all('/<(input|textarea|select)\b([^>]*)>(.*?(?=<\/textarea>|<\/select>))?/is', $form[2], $tags, PREG_SET_ORDER);
+    // An input is one tag; only a textarea or a select has content up to its own end tag. (An optional content group
+    // after every tag swallowed the inputs up to the next </select>: the field after a multistore checkbox was lost.)
+    preg_match_all('/<(input)\b([^>]*)>|<(textarea|select)\b([^>]*)>(.*?)<\/\3\s*>/is', $form[2], $tags, PREG_SET_ORDER);
     foreach ($tags as $tag) {
-        $attrs = $tag[2];
+        $isInput = ($tag[1] ?? '') !== '';
+        $element = strtolower($isInput ? $tag[1] : $tag[3]);
+        $attrs = $isInput ? $tag[2] : $tag[4];
+        $content = $isInput ? '' : (string) ($tag[5] ?? '');
         if (!preg_match('/\bname="([^"]+)"/', $attrs, $n)) {
             continue;
         }
         $fieldName = html_entity_decode($n[1]);
         preg_match('/\btype="([^"]+)"/', $attrs, $t);
         preg_match('/\bvalue="([^"]*)"/', $attrs, $v);
-        $type = strtolower($t[1] ?? ($tag[1] === 'input' ? 'text' : $tag[1]));
+        $type = strtolower($t[1] ?? ($isInput ? 'text' : $element));
         $value = html_entity_decode($v[1] ?? '');
         $disabled = preg_match('/\bdisabled\b/', $attrs) === 1;
         if ($type === 'checkbox') {
@@ -616,10 +641,10 @@ function msFormPage(string $jar, string $url, string $context): array|string
             }
         } elseif ($type === 'radio' && !preg_match('/\bchecked\b/', $attrs)) {
             continue;
-        } elseif ($tag[1] === 'textarea') {
-            $value = html_entity_decode(trim((string) ($tag[3] ?? '')));
-        } elseif ($tag[1] === 'select') {
-            preg_match('/<option[^>]*\bselected\b[^>]*value="([^"]*)"|<option[^>]*value="([^"]*)"[^>]*\bselected\b/i', (string) ($tag[3] ?? ''), $o);
+        } elseif ($element === 'textarea') {
+            $value = html_entity_decode(trim($content));
+        } elseif ($element === 'select') {
+            preg_match('/<option[^>]*\bselected\b[^>]*value="([^"]*)"|<option[^>]*value="([^"]*)"[^>]*\bselected\b/i', $content, $o);
             $value = html_entity_decode(($o[1] ?? '') !== '' ? $o[1] : ($o[2] ?? ''));
         }
         if ($type === 'text') {

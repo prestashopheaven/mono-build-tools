@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.4] - 2026-11-17
+
+### Opgelost
+- Multistore-ronde, "configuration page per shop context": de formulierlezer (nu `msParseFormPage()`, met tests) liet
+  elke `<input>` alles tot de volgende `</select>` of `</textarea>` opslokken. In een winkel- of groepscontext viel het
+  veld na zijn multistore-vinkje daardoor weg, en de check meldde "the page does not show the own value with a ticked
+  checkbox" terwijl de pagina het goed toonde (gevonden met `heavencategorysuggestions`, veel velden met selects erna).
+  Alleen een textarea en een select hebben nu inhoud, zoals in `HtmlForm` van build-testing-php.
+
 ## [1.0.3] - 2026-11-07
 
 ### Nieuw
