@@ -112,4 +112,42 @@ final class MultistoreFormParserTest extends TestCase
         return '<form name="form" method="post" action="/admin-dev/index.php/modules/heavenfoo/configuration/save?a=1&amp;b=2">'
             . $fields . '<input type="hidden" id="form__token" name="form[_token]" value="t" /></form>';
     }
+
+    public function testPickTextFieldTakesTheFirstFieldTheFormAccepts(): void
+    {
+        $tried = [];
+        $picked = msPickTextField(['form[emails]', 'form[medium]', 'form[days]'], static function (string $field) use (&$tried): ?string {
+            $tried[] = $field;
+
+            return $field === 'form[days]' ? null : 'refused ' . $field;
+        });
+
+        self::assertSame('form[days]', $picked['field']);
+        self::assertNull($picked['error']);
+        self::assertSame(['form[emails]' => 'refused form[emails]', 'form[medium]' => 'refused form[medium]'], $picked['refused']);
+        self::assertSame(['form[emails]', 'form[medium]', 'form[days]'], $tried);
+    }
+
+    public function testPickTextFieldStopsAtTheFirstSuccess(): void
+    {
+        $tried = [];
+        $picked = msPickTextField(['form[a]', 'form[b]'], static function (string $field) use (&$tried): ?string {
+            $tried[] = $field;
+
+            return null;
+        });
+
+        self::assertSame(['field' => 'form[a]', 'error' => null, 'refused' => []], $picked);
+        self::assertSame(['form[a]'], $tried, 'A field that saved is the test field: no other field is changed.');
+    }
+
+    public function testPickTextFieldReportsTheLastErrorWhenEveryFieldIsRefused(): void
+    {
+        $picked = msPickTextField(['form[a]', 'form[b]'], static fn (string $field): ?string => 'no ' . $field);
+
+        self::assertNull($picked['field']);
+        self::assertSame('no form[b]', $picked['error']);
+        self::assertSame(['form[a]', 'form[b]'], array_keys($picked['refused']));
+        self::assertSame(['field' => null, 'error' => null, 'refused' => []], msPickTextField([], static fn (string $field): ?string => 'x'));
+    }
 }

@@ -450,21 +450,29 @@ function msBackOfficeForm(Shop $shop, int $shop2, int $group2): array
     if (preg_grep('/\[multistore_/', array_keys($page['checkboxes']))) {
         $problems[] = 'all shops context: the form shows multistore checkboxes';
     }
-    $textField = msFirstTextField($page);
-    if ($textField === null) {
+    if (msFirstTextField($page) === null) {
         @unlink($jar);
 
         return ['ok' => true, 'output' => 'no text field in the configuration form (nothing to test)'];
     }
+    // The first text field whose value the form accepts: a field with its own validation (an email address, a
+    // threshold below another) refuses the marker, and a refused save writes nothing, so the next field is tried.
+    $picked = msPickTextField($page['text'], static function (string $field) use ($jar, $page): ?string {
+        $marker = msFormMarker('all', msIsNumber((string) ($page['fields'][$field] ?? '')));
+        ps_vlog("multistore form: trying field $field, all shops value $marker");
+        $fields = $page['fields'];
+        $fields[$field] = $marker;
+
+        return msSubmit($jar, $page, $fields);
+    });
+    $textField = $picked['field'] ?? $page['text'][0];
+    $save = $picked['error'];
     $numeric = msIsNumber((string) ($page['fields'][$textField] ?? ''));
     $allMarker = msFormMarker('all', $numeric);
-    ps_vlog("multistore form: testing field $textField (" . ($numeric ? 'numeric' : 'text') . "), all shops value $allMarker");
-    $fields = $page['fields'];
-    $fields[$textField] = $allMarker;
-    $save = msSubmit($jar, $page, $fields);
+    ps_vlog("multistore form: testing field $textField (" . ($numeric ? 'numeric' : 'text') . "), all shops value $allMarker; refused: " . json_encode($picked['refused']));
     $rows = msRowsWithValue($shop, $allMarker);
     if ($save !== null) {
-        $problems[] = "all shops context: saving failed: $save";
+        $problems[] = 'all shops context: saving failed for every text field (' . implode(', ', array_keys($picked['refused'])) . "): $save";
     } elseif (count($rows) !== 1 || $rows[0]['scope'] !== 'global') {
         $problems[] = 'all shops context: saving wrote ' . json_encode($rows) . ', expected one global value';
     }
@@ -704,6 +712,31 @@ function msSameValue(string $shown, string $marker, bool $numeric): bool
 function msFirstTextField(array $page): ?string
 {
     return $page['text'][0] ?? null;
+}
+
+/**
+ * Tries the text fields in their order until one is saved: $save submits the marker in that field and returns null on
+ * success or the error the page shows. Returns the saved field (null when every field was refused), the last error
+ * (null on success) and the refused fields with their error.
+ *
+ * @param list<string> $candidates
+ * @param callable(string): ?string $save
+ *
+ * @return array{field: ?string, error: ?string, refused: array<string, string>}
+ */
+function msPickTextField(array $candidates, callable $save): array
+{
+    $refused = [];
+    $error = null;
+    foreach ($candidates as $field) {
+        $error = $save($field);
+        if ($error === null) {
+            return ['field' => $field, 'error' => null, 'refused' => $refused];
+        }
+        $refused[$field] = $error;
+    }
+
+    return ['field' => null, 'error' => $error, 'refused' => $refused];
 }
 
 /**

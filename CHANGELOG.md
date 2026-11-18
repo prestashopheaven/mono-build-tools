@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.6.1
+
+- `prestashopheaven/build-tools` 1.6.1: the multistore round tries the text fields of the settings form in order until
+  the form saves one (a field with its own validation, such as an email address, refused the test value).
+
 ## 1.6.0
 
 - `prestashopheaven/build-tools` 1.6.0: `ps-module layout` (the layout check of the verify stage, in a language of

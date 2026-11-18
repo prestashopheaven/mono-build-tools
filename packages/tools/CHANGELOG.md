@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.1] - 2026-11-18
+
+### Opgelost
+- Multistore-ronde, "configuration page per shop context": de check vulde altijd het eerste tekstveld met zijn
+  markeerwaarde. Heeft dat veld eigen validatie (een e-mailadres, een drempel onder een andere), dan weigerde het
+  formulier de waarde en faalde de check ("saving failed: One of the email addresses is not valid",
+  `heavenipriskdetector` 1.2.0). Hij probeert nu de tekstvelden op volgorde tot het formulier er een opslaat
+  (`msPickTextField()`, met tests); een geweigerde poging schrijft niets.
+
 ## [1.6.0] - 2026-11-18
 
 ### Nieuw
