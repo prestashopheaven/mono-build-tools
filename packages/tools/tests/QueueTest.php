@@ -210,4 +210,83 @@ final class QueueTest extends TestCase
         self::assertSame(2, $run(['cancel', $job['id'], $q])[0], 'only open jobs can be cancelled');
         self::assertSame(2, $run(['nope', $q])[0]);
     }
+
+    public function testALeaseWaitsForItsTurnAndCountsForTheLimit(): void
+    {
+        file_put_contents("$this->dir/pools.json", '{"shops": {"max": 1}}');
+        putenv('PS_MODULE_QUEUE_LEASE');
+        $first = queue_lease($this->dir, 'shops', 'heavena', 'shops run');
+        self::assertNotNull($first);
+        self::assertSame($first, getenv('PS_MODULE_QUEUE_LEASE'));
+        self::assertNull(queue_lease($this->dir, 'shops', 'heavena', 'child'), 'a child of a lease holder does not wait');
+        putenv('PS_MODULE_QUEUE_LEASE');
+
+        // The second one waits while the first runs; the first ends during the wait.
+        $said = [];
+        $sleeps = 0;
+        $dir = $this->dir;
+        $second = queue_lease($this->dir, 'shops', 'heavenb', 'shops run', false, 60, static function (string $m) use (&$said): void {
+            $said[] = $m;
+        }, static function (int $s) use (&$sleeps, $dir, $first): void {
+            ++$sleeps;
+            queue_release($dir, (string) $first, 0);
+        });
+        self::assertNotNull($second);
+        self::assertSame(1, $sleeps);
+        self::assertSame('done', queue_job($this->dir, (string) $first)['state'] ?? null);
+        self::assertSame('running', queue_job($this->dir, (string) $second)['state'] ?? null);
+        self::assertStringContainsString('position 1', $said[0] ?? '');
+        self::assertStringContainsString('your turn', $said[1] ?? '');
+
+        queue_release($this->dir, (string) $second, 1);
+        self::assertSame('failed', queue_job($this->dir, (string) $second)['state'] ?? null);
+        self::assertFalse(getenv('PS_MODULE_QUEUE_LEASE'));
+    }
+
+    public function testALeaseOfAGoneProcessIsEndedAndTheWorkerNeverStartsLeases(): void
+    {
+        file_put_contents("$this->dir/pools.json", '{"docs": {"max": 1}}');
+        putenv('PS_MODULE_QUEUE_LEASE');
+        $gone = queue_submit($this->dir, 'docs', 'heavena', '/x', ['a']);
+        $gone['lease'] = true;
+        $gone['state'] = 'running';
+        $gone['pid'] = 999999;
+        queue_save($this->dir, $gone);
+
+        // The worker pass leaves the lease alone (no spawn, no recovery).
+        $spawned = [];
+        $processes = [];
+        queue_tick($this->dir, 'docs', $processes, static function (array $j, string $log) use (&$spawned): ?array {
+            $spawned[] = $j['id'];
+
+            return null;
+        });
+        self::assertSame([], $spawned);
+        self::assertSame('running', queue_job($this->dir, $gone['id'])['state'] ?? null);
+
+        // A new lease ends it (its holder is gone) and starts at once.
+        $lease = queue_lease($this->dir, 'docs', 'heavenb', 'docs build', false, 0);
+        self::assertNotNull($lease);
+        self::assertSame('done', queue_job($this->dir, $gone['id'])['state'] ?? null);
+        self::assertSame('holder process gone', queue_job($this->dir, $gone['id'])['note'] ?? null);
+        queue_release($this->dir, (string) $lease, 0);
+    }
+
+    public function testALeaseThatWaitsTooLongGivesUp(): void
+    {
+        file_put_contents("$this->dir/pools.json", '{"shops": {"max": 1}}');
+        putenv('PS_MODULE_QUEUE_LEASE');
+        $first = (string) queue_lease($this->dir, 'shops', 'heavena', 'a');
+        putenv('PS_MODULE_QUEUE_LEASE');
+        try {
+            queue_lease($this->dir, 'shops', 'heavenb', 'b', false, 3, static function (string $m): void {
+            }, static function (int $s): void {
+            });
+            self::fail('expected a timeout');
+        } catch (RuntimeException $e) {
+            self::assertStringContainsString('Still waiting', $e->getMessage());
+        }
+        self::assertCount(1, array_filter(queue_jobs($this->dir, 'shops'), static fn (array $j): bool => $j['state'] === 'running'));
+        queue_release($this->dir, $first, 0);
+    }
 }

@@ -103,6 +103,20 @@ function ps_lock(string $name, string $purpose, string $fromDir, ?int $timeout =
 }
 
 /**
+ * ps_lock() with the lock files in $lockDir (the queue and the shared instances keep theirs in their own folder),
+ * without changing PS_MODULE_LOCK_DIR for the rest of this process and its children.
+ */
+function ps_lock_at(string $lockDir, string $name, string $purpose, ?int $timeout = null): void
+{
+    $previous = getenv('PS_MODULE_LOCK_DIR');
+    putenv('PS_MODULE_LOCK_DIR=' . $lockDir);
+    try {
+        ps_lock($name, $purpose, $lockDir, $timeout);
+    } finally {
+        putenv($previous === false ? 'PS_MODULE_LOCK_DIR' : 'PS_MODULE_LOCK_DIR=' . $previous);
+    }
+}
+/**
  * Releases a lock this process took (it is released anyway when the process ends).
  */
 function ps_unlock(string $name): void

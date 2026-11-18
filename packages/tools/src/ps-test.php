@@ -43,6 +43,8 @@ require_once __DIR__ . '/verbose.php';
 require_once __DIR__ . '/shop-port.php';
 require_once __DIR__ . '/ps-multistore.php';
 require_once __DIR__ . '/lock.php';
+require_once __DIR__ . '/instance.php';
+require_once __DIR__ . '/queue.php';
 
 $repoRoot = dod_repo_dir((string) getcwd());
 if ($repoRoot === null) {
@@ -82,6 +84,23 @@ if (!in_array($command, ['doctor', 'help'], true)) {
         ps_lock('shops-' . $module, "shops $command " . implode(' ', $args), ROOT);
     } catch (RuntimeException $e) {
         fail($e->getMessage());
+    }
+}
+
+// With the shared instance on (ps-module instance enable), the heavy commands wait for their turn in the queue of the
+// pool (at most N at once, see ps-module queue pools); a child of a command that already has its turn does not wait.
+// testing.json "exclusive": true runs this module's shop work alone (modules that affect each other).
+$pool = instance_pool(ROOT);
+if ($pool !== null && in_array($command, ['run', 'up', 'upgrade', 'multistore', 'integration', 'behat'], true)) {
+    try {
+        $lease = queue_lease(queue_dir(ROOT), $pool, $module, "shops $command " . implode(' ', $args), !empty($config['exclusive']));
+    } catch (RuntimeException $e) {
+        fail($e->getMessage());
+    }
+    if ($lease !== null) {
+        register_shutdown_function(static function () use ($lease): void {
+            queue_release(queue_dir(ROOT), $lease, 0);
+        });
     }
 }
 
@@ -170,6 +189,9 @@ final class Shop
 {
     public readonly int $port;
     private readonly string $project;
+    /** The pool of the shared instance (PS_TEST_INSTANCE) and this shop's slot in it, or null for an own compose stack. */
+    private readonly ?string $pool;
+    private readonly ?int $slot;
 
     /**
      * Derives the port and the compose project name from the PrestaShop version.
@@ -178,8 +200,11 @@ final class Shop
      */
     public function __construct(public readonly string $version, private readonly array $config)
     {
-        $this->port = shop_port($config, $version);
-        $this->project = $config['module'] . '-ps' . str_replace('.', '', $version);
+        // A shared instance (docs/factory/queue.md part B): a slot of psh-<pool>, made from the template of the version.
+        $this->pool = instance_pool(ROOT);
+        $this->slot = $this->pool === null ? null : instance_reserve(instance_dir(ROOT), $this->pool, (string) $config['module'], $version);
+        $this->port = $this->slot === null ? shop_port($config, $version) : INSTANCE_PORT_BASE[$this->pool] + $this->slot;
+        $this->project = $this->slot === null ? $config['module'] . '-ps' . str_replace('.', '', $version) : "psh-{$this->pool}-s{$this->slot}";
         ps_vlog("shop PrestaShop $version: port {$this->port}, compose project {$this->project}, database image "
             . ($config['db_image'] ?? 'mysql:8.0') . ', compose file ' . COMPOSE_FILE);
     }
@@ -192,6 +217,19 @@ final class Shop
         out("\n== PrestaShop {$this->version} on port {$this->port} ==");
         if ($this->isReady()) {
             out('Shop is already running.');
+
+            return;
+        }
+        if ($this->slot !== null) {
+            out("Slot {$this->slot} of the shared instance psh-{$this->pool}, from the template of PrestaShop {$this->version}...");
+            try {
+                instance_slot_up(instance_dir(ROOT), (string) $this->pool, $this->slot, $this->version, static function (string $m): void {
+                    out($m);
+                }, (string) getenv('PS_TEST_TEMPLATE')); // a derived template (docs: the version with its languages)
+            } catch (RuntimeException $e) {
+                fail($e->getMessage());
+            }
+            out('Shop is ready.');
 
             return;
         }
@@ -245,6 +283,12 @@ final class Shop
      */
     public function down(): void
     {
+        if ($this->slot !== null) {
+            instance_slot_down((string) $this->pool, $this->slot);
+            instance_release(instance_dir(ROOT), (string) $this->pool, $this->slot);
+
+            return;
+        }
         $this->compose('down -v --remove-orphans', true);
     }
 
@@ -557,6 +601,14 @@ final class Shop
      */
     private function composeCmd(string $args): string
     {
+        if ($this->slot !== null) {
+            $command = instance_translate($args, $this->project);
+            if ($command === null) {
+                fail("docker compose $args has no meaning for a slot of the shared instance.");
+            }
+
+            return $command;
+        }
         putenv('PS_VERSION=' . $this->version);
         putenv('PS_PORT=' . $this->port);
         putenv('DB_IMAGE=' . ($this->config['db_image'] ?? 'mysql:8.0'));

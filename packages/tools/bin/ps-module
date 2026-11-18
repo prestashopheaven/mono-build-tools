@@ -60,6 +60,10 @@
  *   ps-module index                  add the module's index.php to every directory that lacks one (not vendor/, never via symlinks)
  *   ps-module link | unlink          use the local libraries (single packages and the packages of the mono-<name>
  *                                    monorepos) of the workspace, symlinked, instead of Packagist, and back
+ *   ps-module queue <command>        the queue of the heavy work (docs, shops): list, pools, status <id>, wait <id>,
+ *                                    set --pool=X --max=N (live), cancel <id> (src/queue.php)
+ *   ps-module instance <command>     the shared shop instances: status, enable|disable [--pool=X], template <version>,
+ *                                    down (src/instance.php)
  *   ps-module mono <command>         the monorepos of the package collection: new, package, validate, check,
  *                                    check-release, set-version, packages, matrix, register (src/mono.php)
  *   ps-module find "<need>" [--external | --pitfalls]
@@ -194,6 +198,14 @@ switch ($command) {
     case 'git':
         requireModule($moduleDir);
         exit(script('gitflow.php', array_merge([(string) $moduleDir], $args), (string) $repoDir));
+
+    case 'queue':
+        // The queue of the heavy work (src/queue.php, workspace docs/factory/queue.md); works without a module.
+        exit(script('queue.php', $args));
+
+    case 'instance':
+        // The shared shop instances (src/instance.php); works without a module.
+        exit(script('instance.php', $args));
 
     case 'mono':
         // The monorepos of the package collection (src/mono.php); works without a module.

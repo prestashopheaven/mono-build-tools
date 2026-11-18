@@ -165,9 +165,8 @@ function queue_save(string $dir, array $job): void
  */
 function queue_locked(string $dir, string $pool, callable $change): mixed
 {
-    putenv('PS_MODULE_LOCK_DIR=' . "$dir/locks");
     $held = ps_lock_held("queue-$pool");
-    ps_lock("queue-$pool", 'queue change', $dir, 120);
+    ps_lock_at("$dir/locks", "queue-$pool", 'queue change', 120);
     try {
         return $change();
     } finally {
@@ -295,7 +294,8 @@ function queue_tick(string $dir, string $pool, array &$processes, ?callable $spa
         $time = $now ?? microtime(true);
         $jobs = queue_jobs($dir, $pool);
         foreach ($jobs as &$job) {
-            if ($job['state'] !== 'running') {
+            // A lease is started and ended by its own holder (queue_lease()), never by the worker.
+            if ($job['state'] !== 'running' || !empty($job['lease'])) {
                 continue;
             }
             $own = $processes[$job['id']] ?? null;
@@ -321,6 +321,9 @@ function queue_tick(string $dir, string $pool, array &$processes, ?callable $spa
         }
         unset($job);
         foreach (queue_startable($jobs, queue_pool($dir, $pool)['max']) as $job) {
+            if (!empty($job['lease'])) {
+                continue;
+            }
             $log = "$dir/$pool/{$job['id']}.log";
             $started = $spawn($job, $log);
             if ($started === null) {
@@ -340,6 +343,127 @@ function queue_tick(string $dir, string $pool, array &$processes, ?callable $spa
 
         return count(array_filter(queue_jobs($dir, $pool), static fn (array $j): bool => in_array($j['state'], QUEUE_OPEN, true)));
     });
+}
+
+/**
+ * Whether a process runs (a lease whose holder is gone is ended by the next one that waits).
+ */
+function queue_pid_alive(int $pid): bool
+{
+    if ($pid <= 0) {
+        return false;
+    }
+    if (PHP_OS_FAMILY === 'Windows') {
+        $out = (string) shell_exec('tasklist /FI "PID eq ' . $pid . '" /NH 2>NUL');
+
+        return preg_match('/\s' . $pid . '\s/', $out) === 1;
+    }
+
+    return function_exists('posix_kill') ? posix_kill($pid, 0) : is_dir("/proc/$pid");
+}
+
+/**
+ * A lease: this process waits for its turn in the pool and then does the heavy work itself (the module thread keeps
+ * its own output). The lease counts like a job for the limit, one-per-module and exclusive rules; it starts when the
+ * rules allow it and ends with queue_release() (or, when the holder dies, the next waiting process ends it). Child
+ * processes see PS_MODULE_QUEUE_LEASE and do not wait again. Returns the lease id, or null when this process already
+ * holds one.
+ *
+ * @param callable(string): void $say progress messages (every minute while waiting)
+ * @param callable(int): void $sleep tests pass their own
+ *
+ * @throws RuntimeException when the wait takes longer than $timeout seconds
+ */
+function queue_lease(string $dir, string $pool, string $module, string $label, bool $exclusive = false, int $timeout = 14400, ?callable $say = null, ?callable $sleep = null): ?string
+{
+    if ((string) getenv('PS_MODULE_QUEUE_LEASE') !== '') {
+        return null;
+    }
+    $say ??= static function (string $m): void {
+        fwrite(STDERR, $m . "\n");
+    };
+    $sleep ??= static function (int $s): void {
+        sleep($s);
+    };
+    $job = queue_locked($dir, $pool, static function () use ($dir, $pool, $module, $label, $exclusive): array {
+        $time = microtime(true);
+        $job = [
+            'id' => $pool . '-' . gmdate('Ymd-His', (int) $time) . '-' . bin2hex(random_bytes(3)),
+            'pool' => $pool, 'module' => $module, 'cwd' => '', 'command' => [], 'exclusive' => $exclusive, 'thread' => $label,
+            'priority' => 0, 'state' => 'queued', 'created' => $time, 'started' => null, 'finished' => null, 'exit' => null,
+            'pid' => getmypid(), 'result_read' => true, 'attempts' => 0, 'lease' => true,
+        ];
+        queue_save($dir, $job);
+
+        return $job;
+    });
+    $waited = 0;
+    $lastSaid = -60;
+    while (true) {
+        $state = queue_locked($dir, $pool, static function () use ($dir, $pool, $job): string {
+            $jobs = queue_jobs($dir, $pool);
+            foreach ($jobs as &$other) {
+                if (!empty($other['lease']) && in_array($other['state'], QUEUE_OPEN, true) && $other['id'] !== $job['id'] && !queue_pid_alive((int) $other['pid'])) {
+                    $other['state'] = $other['state'] === 'running' ? 'done' : 'cancelled';
+                    $other['finished'] = microtime(true);
+                    $other['note'] = 'holder process gone';
+                    queue_save($dir, $other);
+                }
+            }
+            unset($other);
+            foreach (queue_startable($jobs, queue_pool($dir, $pool)['max']) as $start) {
+                if ($start['id'] === $job['id']) {
+                    $start['state'] = 'running';
+                    $start['started'] = microtime(true);
+                    queue_save($dir, $start);
+
+                    return 'running';
+                }
+            }
+
+            return 'queued';
+        });
+        if ($state === 'running') {
+            putenv('PS_MODULE_QUEUE_LEASE=' . $job['id']);
+            if ($waited > 0) {
+                $say("Queue: your turn in the $pool pool after {$waited}s ({$job['id']}).");
+            }
+
+            return $job['id'];
+        }
+        if ($waited >= $timeout) {
+            queue_release($dir, $job['id'], 1);
+            throw new RuntimeException("Still waiting in the $pool queue after {$waited}s; try again later (ps-module queue list).");
+        }
+        if ($waited - $lastSaid >= 60) {
+            $current = queue_job($dir, $job['id']) ?? $job;
+            $say("Queue: waiting in the $pool pool, position " . queue_position($dir, $current) . " (ps-module queue list).");
+            $lastSaid = $waited;
+        }
+        $sleep(3);
+        $waited += 3;
+    }
+}
+
+/**
+ * Ends a lease (or a job) with an exit code.
+ */
+function queue_release(string $dir, string $id, int $exit): void
+{
+    $job = queue_job($dir, $id);
+    if ($job === null) {
+        return;
+    }
+    queue_locked($dir, $job['pool'], static function () use ($dir, $id, $exit): void {
+        $job = queue_job($dir, $id);
+        if ($job !== null && in_array($job['state'], QUEUE_OPEN, true)) {
+            $job['state'] = $exit === 0 ? 'done' : 'failed';
+            $job['exit'] = $exit;
+            $job['finished'] = microtime(true);
+            queue_save($dir, $job);
+        }
+    });
+    putenv('PS_MODULE_QUEUE_LEASE');
 }
 
 /**
@@ -380,8 +504,7 @@ function queue_spawn(array $job, string $logFile): ?array
  */
 function queue_work(string $dir, string $pool, int $idle = 60, bool $once = false): void
 {
-    putenv('PS_MODULE_LOCK_DIR=' . "$dir/locks");
-    ps_lock("queue-worker-$pool", 'queue worker', $dir, 1);
+    ps_lock_at("$dir/locks", "queue-worker-$pool", 'queue worker', 1);
     $processes = [];
     $quiet = 0.0;
     do {
@@ -399,7 +522,6 @@ function queue_work(string $dir, string $pool, int $idle = 60, bool $once = fals
  */
 function queue_ensure_worker(string $dir, string $pool): bool
 {
-    putenv('PS_MODULE_LOCK_DIR=' . "$dir/locks");
     $handle = @fopen("$dir/locks/queue-worker-$pool.lock", 'c');
     if ($handle !== false) {
         $free = flock($handle, LOCK_EX | LOCK_NB);

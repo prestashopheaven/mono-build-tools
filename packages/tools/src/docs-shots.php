@@ -32,6 +32,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/verbose.php';
 require_once __DIR__ . '/shop-port.php';
 require_once __DIR__ . '/lock.php';
+require_once __DIR__ . '/instance.php';
+require_once __DIR__ . '/queue.php';
 
 /**
  * Runs a command (an argument list, no shell) with a timeout; returns the exit code and the output.
@@ -642,13 +644,132 @@ function docs_shots_on_shop(array $ctx, string $version, array $shots, bool $kee
         return ['error' => $e->getMessage()];
     }
 
+    // The shared docs instance (ps-module instance enable): wait for a turn in the docs queue, then take a slot of
+    // psh-docs (PS_TEST_POOL tells the shops commands started from here to use the docs pool).
+    $previousPool = getenv('PS_TEST_POOL');
+    $lease = null;
+    if (instance_enabled('docs', (string) $ctx['repo'])) {
+        putenv('PS_TEST_POOL=docs');
+        try {
+            $lease = queue_lease(queue_dir((string) $ctx['repo']), 'docs', (string) $ctx['module'], "docs screenshots on PrestaShop $version", !empty($ctx['testing']['exclusive']));
+        } catch (RuntimeException $e) {
+            putenv($previousPool === false ? 'PS_TEST_POOL' : 'PS_TEST_POOL=' . $previousPool);
+            if (!$held) {
+                ps_unlock('shops-' . $ctx['module']);
+            }
+
+            return ['error' => $e->getMessage()];
+        }
+    }
+
     try {
         return docs_shots_on_locked_shop($ctx, $version, $shots, $keep);
     } finally {
+        if ($lease !== null) {
+            queue_release(queue_dir((string) $ctx['repo']), $lease, 0);
+        }
+        putenv($previousPool === false ? 'PS_TEST_POOL' : 'PS_TEST_POOL=' . $previousPool);
         if (!$held) {
             ps_unlock('shops-' . $ctx['module']);
         }
     }
+}
+
+/**
+ * The template of a PrestaShop version with the languages of the docs installed, on the shared docs instance: made
+ * once per version and language set (in a temporary slot, without any module), then every docs build of every module
+ * with the same languages starts from it instead of installing them again. Returns the template tag and the install
+ * result per PrestaShop iso code (for the notes about missing translation packs), or [null, []] when the shared
+ * instance is off, languages are not installed (docs.json > shop.install_languages) or making it failed.
+ *
+ * @param array<string, mixed> $ctx
+ *
+ * @return array{0: ?string, 1: array<string, array<string, mixed>>}
+ */
+function docs_language_template(array $ctx, string $version): array
+{
+    $pool = instance_pool((string) $ctx['repo']);
+    if ($pool === null || !($ctx['config']['shop']['install_languages'] ?? true)) {
+        return [null, []];
+    }
+    $isos = array_values(array_unique(array_map(static fn (string $iso): string => docs_shop_iso($ctx, $iso), (array) $ctx['languages'])));
+    sort($isos);
+    $tag = instance_tag($version) . '-l' . substr(sha1(implode(',', $isos)), 0, 10);
+    $dir = instance_dir((string) $ctx['repo']);
+    $resultsFile = "$dir/templates/tpl_$tag.json";
+    $load = static function () use ($resultsFile): array {
+        $data = json_decode((string) @file_get_contents($resultsFile), true);
+
+        return is_array($data) ? $data : [];
+    };
+    if (instance_template_ready($dir, $tag) && is_file($resultsFile)) {
+        return [$tag, $load()];
+    }
+    $held = ps_lock_held("template-$tag");
+    $slot = null;
+    try {
+        ps_lock_at("$dir/locks", "template-$tag", "making the template of PrestaShop $version with " . count($isos) . ' languages', 3600);
+        if (instance_template_ready($dir, $tag) && is_file($resultsFile)) {
+            return [$tag, $load()];
+        }
+        echo "Making the template of PrestaShop $version with the " . count($isos) . " languages of the docs (once; later docs builds start from it)...\n";
+        $slot = instance_reserve($dir, $pool, "_tpl-$tag", $version);
+        instance_slot_up($dir, $pool, $slot, $version, static function (string $m): void {
+            echo "  $m\n";
+        });
+        $container = "psh-$pool-s$slot";
+        docs_exec(['docker', 'cp', DOCS_RESOURCES . '/docs/shop-probe.php', "$container:/tmp/docs-probe.php"], 60);
+        $results = [];
+        foreach ($isos as $psIso) {
+            echo "  language $psIso: installing it in the template...\n";
+            $results[$psIso] = docs_shop_probe($container, ['install', $psIso]);
+        }
+        docs_exec(['docker', 'exec', '-u', 'root', $container, 'sh', '-c', 'rm -rf /var/www/html/var/cache/dev/* /var/www/html/var/cache/prod/*'], 120);
+        instance_template_save($dir, $pool, $slot, $tag);
+        file_put_contents($resultsFile, json_encode($results, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+        echo "Template psh-tpl:$tag is ready.\n";
+
+        return [$tag, $results];
+    } catch (RuntimeException $e) {
+        echo "  The language template could not be made ({$e->getMessage()}); the languages are installed in the shop itself.\n";
+
+        return [null, []];
+    } finally {
+        if ($slot !== null) {
+            instance_slot_down($pool, $slot);
+            instance_release($dir, $pool, $slot);
+        }
+        if (!$held) {
+            ps_unlock("template-$tag");
+        }
+    }
+}
+
+/**
+ * Where the screenshot shop of a version runs: its port, its container ('' when not running) and the host name of
+ * the shop inside its Docker network. A slot of the shared docs instance (psh-docs-s<n>) or the module's own
+ * compose shop.
+ *
+ * @param array<string, mixed> $ctx
+ *
+ * @return array{port: int, container: string, host: string}
+ */
+function docs_shop_target(array $ctx, string $version): array
+{
+    $pool = instance_pool((string) $ctx['repo']);
+    if ($pool !== null) {
+        $slot = instance_slot_of(instance_dir((string) $ctx['repo']), $pool, (string) $ctx['module'], $version);
+        if ($slot === null) {
+            return ['port' => 0, 'container' => '', 'host' => ''];
+        }
+        $name = "psh-$pool-s$slot";
+        [$code, $output] = docs_exec(['docker', 'ps', '-q', '--filter', 'name=^' . $name . '$'], 60);
+
+        return ['port' => INSTANCE_PORT_BASE[$pool] + $slot, 'container' => $code === 0 && trim($output, " \n\r\t\v\0") !== '' ? $name : '', 'host' => $name];
+    }
+    $project = $ctx['module'] . '-ps' . str_replace('.', '', $version);
+
+    return ['port' => docs_shop_port($ctx, $version), 'container' => docs_shop_container($project), 'host' => 'prestashop'];
 }
 
 /**
@@ -661,20 +782,30 @@ function docs_shots_on_shop(array $ctx, string $version, array $shots, bool $kee
  */
 function docs_shots_on_locked_shop(array $ctx, string $version, array $shots, bool $keep): array
 {
-    $port = docs_shop_port($ctx, $version);
-    $project = $ctx['module'] . '-ps' . str_replace('.', '', $version);
-    $container = docs_shop_container($project);
-    ps_vlog("shop PrestaShop $version: compose project $project, port $port, container " . ($container !== '' ? $container : '(none)'));
+    $target = docs_shop_target($ctx, $version);
+    $port = $target['port'];
+    $container = $target['container'];
+    ps_vlog("shop PrestaShop $version: port $port, container " . ($container !== '' ? $container : '(none)'));
     $running = $container !== '' && in_array(docs_http_status("http://localhost:$port/"), [200, 301, 302], true);
-    echo "Shop: PrestaShop $version on http://localhost:$port/ (" . ($running ? 'running: deploying the current code' : 'starting it') . ")\n";
-    if (docs_ps_test($ctx, [$running ? 'deploy' : 'up', $version]) !== 0) {
+    // On the shared docs instance a new shop starts from the template of the version with these languages.
+    [$template, $templateResults] = $running ? [null, []] : docs_language_template($ctx, $version);
+    $previousTemplate = getenv('PS_TEST_TEMPLATE');
+    if ($template !== null) {
+        putenv('PS_TEST_TEMPLATE=' . $template);
+    }
+    echo 'Shop: PrestaShop ' . $version . ($running ? " on http://localhost:$port/ (running: deploying the current code)" : ' (starting it' . ($template !== null ? ", from the template $template with the languages" : '') . ')') . "\n";
+    $code = docs_ps_test($ctx, [$running ? 'deploy' : 'up', $version]);
+    putenv($previousTemplate === false ? 'PS_TEST_TEMPLATE' : 'PS_TEST_TEMPLATE=' . $previousTemplate);
+    if ($code !== 0) {
         return ['error' => "the test shop PrestaShop $version could not be " . ($running ? 'updated' : 'started') . ' (see the output above)'];
     }
-    $container = docs_shop_container($project);
+    $target = docs_shop_target($ctx, $version);
+    $port = $target['port'];
+    $container = $target['container'];
     $network = $container !== '' ? docs_shop_network($container) : '';
-    ps_vlog("shop container $container, network " . ($network !== '' ? $network : '(none)'));
+    ps_vlog("shop container $container on port $port, network " . ($network !== '' ? $network : '(none)'));
     if ($network === '') {
-        return ['error' => "no container/network found for the shop (compose project $project)"];
+        return ['error' => "no container/network found for the shop of PrestaShop $version"];
     }
     docs_exec(['docker', 'cp', DOCS_RESOURCES . '/docs/shop-probe.php', "$container:/tmp/docs-probe.php"], 60);
 
@@ -693,8 +824,12 @@ function docs_shots_on_locked_shop(array $ctx, string $version, array $shots, bo
             $failures[$iso] = 'the shop does not have this language (docs.json > shop.install_languages is false)';
             continue;
         }
-        echo "  language $iso: " . (isset($installed[$psIso]) ? 'checking the translation pack' : 'installing it in the shop') . "...\n";
-        $result = docs_shop_probe($container, ['install', $psIso]);
+        if (isset($installed[$psIso], $templateResults[$psIso])) {
+            $result = $templateResults[$psIso]; // installed in the template, with its translation pack
+        } else {
+            echo "  language $iso: " . (isset($installed[$psIso]) ? 'checking the translation pack' : 'installing it in the shop') . "...\n";
+            $result = docs_shop_probe($container, ['install', $psIso]);
+        }
         if (empty($result['ok'])) {
             $failures[$iso] = "installing the language in PrestaShop $version failed: " . ($result['message'] ?? '?');
         } elseif (empty($result['pack'])) {
@@ -764,7 +899,7 @@ function docs_shots_on_locked_shop(array $ctx, string $version, array $shots, bo
             'admin' => '/admin-dev/index.php',
             'login' => ['email' => 'demo@prestashop.com', 'password' => 'prestashop_demo'],
             'module' => $ctx['module'],
-            'proxy' => ['port' => $port, 'host' => 'prestashop', 'target_port' => 80],
+            'proxy' => ['port' => $port, 'host' => $target['host'], 'target_port' => 80],
             'hide' => (array) ($ctx['config']['shop']['hide'] ?? []),
             'shots' => $jobShots,
         ]], $network);
