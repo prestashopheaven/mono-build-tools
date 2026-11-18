@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.3.0
+
+- `prestashopheaven/build-tools` 1.3.0: `ps-module make cqrs` (commands, queries, handlers and their bus tags from
+  `.factory/design.json`) and `ps-module find --pitfalls` (the pitfalls index of mono-build-knowledge 1.1.0).
+
 ## 1.2.0
 
 - `prestashopheaven/build-tools` 1.2.0: the intake gate checks `.factory/spec.json` against

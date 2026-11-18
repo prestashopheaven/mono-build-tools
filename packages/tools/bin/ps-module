@@ -62,7 +62,7 @@
  *                                    monorepos) of the workspace, symlinked, instead of Packagist, and back
  *   ps-module mono <command>         the monorepos of the package collection: new, package, validate, check,
  *                                    check-release, set-version, packages, matrix, register (src/mono.php)
- *   ps-module find "<need>" [--external]
+ *   ps-module find "<need>" [--external | --pitfalls]
  *                                    search the package index first (PKG-01); --external searches Packagist and npm
  *   ps-module ps find "<term>" | ps check [<module-dir>]
  *                                    the PrestaShop index: classes, methods, hooks, services per release; check = every
@@ -202,12 +202,21 @@ switch ($command) {
         // (src/factory.php); works before the module is scaffolded (--repo=DIR).
         exit(script('factory.php', $args));
 
+    case 'make':
+        // Generators of the Module-Factory from .factory/design.json (src/make.php).
+        requireModule($moduleDir);
+        exit(script('make.php', array_merge([(string) $repoDir, (string) $moduleDir], $args)));
+
     case 'rules':
         // The rules registry of the Module-Factory (build-rules-core of mono-build-rules).
         exit(knowledge('rules-core', 'rules.php', $args, $moduleDir, 'mono-build-rules'));
 
     case 'find':
         // PKG-01: search the package index first; --external searches Packagist and npm (and checks the best hits).
+        // --pitfalls searches the pitfalls index (build-pitfalls): what went wrong before in the same area.
+        if (in_array('--pitfalls', $args, true)) {
+            exit(knowledge('pitfalls', 'pitfalls.php', array_merge(['find'], array_values(array_diff($args, ['--pitfalls']))), $moduleDir));
+        }
         $external = in_array('--external', $args, true);
         $args = array_values(array_diff($args, ['--external']));
         exit(knowledge($external ? 'external' : 'package-index', $external ? 'external.php' : 'package-index.php', array_merge(['find'], $args), $moduleDir));

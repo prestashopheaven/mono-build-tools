@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0] - 2026-11-18
+
+### Nieuw
+- `ps-module make cqrs [--dry-run]` (`src/make.php`, Module-Factory P7): schrijft uit `.factory/design.json` per command
+  en query de berichtklasse (getypte read-only velden met getters) en de handler met `handle()`, en zet de tag van
+  de handler voor de bus van de module in `config/common.yml`. Bestaande bestanden worden nooit overschreven; de
+  logica en de tests schrijft de build-stage (de gates eisen ze).
+- `ps-module find --pitfalls "<onderwerp>"`: zoekt in de valkuilen-index (build-pitfalls).
+
 ## [1.2.0] - 2026-11-18
 
 ### Nieuw
