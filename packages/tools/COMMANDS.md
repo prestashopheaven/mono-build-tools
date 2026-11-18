@@ -280,14 +280,14 @@ publish a released version: the tag `v<version>` must exist, unless it runs in C
 
 | Command | What it does |
 |---|---|
-| `status [--check]` | The checklist of the current version: Addons upload, docs site, demo shop, sales shop. `--check`: also ask the docs site which version it shows. Exit 0 when all are done. |
+| `status [--check]` | The checklist of the current version: docs site, demo shop, sales shop (the Addons upload and the Cloudflare purge are manual, outside the tool). `--check`: also ask the docs site which version it shows. Exit 0 when all are done. |
 | `site` | Builds `dist/docs-site/<module>/`: `index.php` + `readme_<iso>.pdf` of every language (from `docs build`) + `flag-<country>.svg`, the flag shown next to each language. |
 | `docs [--dry-run] [--force] [--no-snapshot]` | Builds the site and uploads it by SFTP to `<DOCS_SITE_SFTP_PATH>/<module>/`, removes stale files there, then checks `<DOCS_SITE_URL>/<module>/index.php`. With `DEMO_SITE_SSH_HOST` set it then rewrites the intro page of the demo shop (`settings intro`), which links the docs site of every module. Afterwards a TransIP VPS snapshot, unless `--no-snapshot`. |
 | `demo [--dry-run] [--force] [--no-snapshot]` | Puts `dist/<module>.zip` in the demo shop (below). Needs the checked zip of the current code (`build` + `validate-zip`), except in CI. Afterwards a VPS snapshot, unless `--no-snapshot`. |
 | `vps-snapshot [<description>] [--dry-run]` | A TransIP snapshot of the whole VPS. `--dry-run` logs in read-only and lists the VPS and its snapshots. |
 | `shop [--dry-run] [--force]` | Creates the module as a product in your own sales shop through the PrestaShop webservice (below). Only on command, never in CI. |
 | `shop --update [--dry-run]` | New version: replaces the texts and images of the existing product (found by its reference) and makes sure of its features; price, tax rule, categories, active state, stock, the virtual file, visibility and reference stay (below). Exit 1 when the shop has no product with the module's reference. |
-| `done addons\|shop` | Records a manual step: the zip of this version is uploaded to PrestaShop Addons (Addons has no upload API), or put in the sales shop product by hand. |
+| `done shop` | Records the manual step: the zip of this version is put in the sales-shop product. |
 | `undo <step>` | Forgets a recorded step (`addons`, `docs`, `demo`, `shop`) of the current version. |
 | `help` | This list. |
 
@@ -301,9 +301,6 @@ publish a released version: the tag `v<version>` must exist, unless it runs in C
 
 On a failure, only the module folder and the database go back to how they were before the deploy.
 
-Afterwards (on the local side) the module's static files (`logo.png`, `views/**`) are purged from the Cloudflare cache
-when `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID` are set; otherwise their addresses are printed. They keep their
-address in every version, and the server lets a CDN cache them for years. `publish docs` does the same for the PDFs.
 
 **`shop`: the product in the sales shop.**
 - **Once per module.** Without `--update`, a product whose reference is the module's technical name is never
@@ -580,7 +577,6 @@ Credentials are always masked in output.
 | `DEMO_SITE_PS_VERSION` (9.2.0), `DEMO_SITE_TIMEZONE` (Europe/Amsterdam), `DEMO_SITE_COUNTRY` (nl), `DEMO_SITE_SHOP_NAME` (PrestaHaven demo), `DEMO_SITE_FIXTURES` (0) | `demo-site install-prestashop` | the installation |
 | `DEMO_SITE_DB_CREDENTIALS` | `demo-site install-prestashop` | another database file instead of the nearest `.db_credentials` |
 | `TRANSIP_LOGIN`, `TRANSIP_PRIVATE_KEY` (file or key text), `TRANSIP_VPS_NAME`, `TRANSIP_SNAPSHOT_KEEP` (2, at least 2: the oldest snapshot is always kept as the starting point; before a new one the most recent goes), `TRANSIP_GLOBAL_KEY` (true) | `vps-snapshot`, after `publish docs/demo` | TransIP VPS snapshots (never on the VPS itself) |
-| `CLOUDFLARE_API_TOKEN` (permission Zone > Cache Purge), `CLOUDFLARE_ZONE_ID` | after `publish docs/demo` | Purges the module's static files (logo, `views/`) and the docs PDFs from the Cloudflare cache. Without them the addresses are printed for a purge by hand. |
 | `SALES_SHOP_URL`, `SALES_SHOP_WEBSERVICE_KEY`, `SALES_SHOP_CATEGORY_ID` (2), `SALES_SHOP_TAX_RULES_GROUP_ID` (none) | `publish shop` | Your own sales shop: its address (as the shop answers it, https and www included) and a webservice key with the permissions listed under `shop` above. |
 
 `.db_credentials` (next to `.env`): `DB_HOST` (localhost), `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, optional

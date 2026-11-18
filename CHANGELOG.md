@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.5.1
+
+- `prestashopheaven/build-tools` 1.5.1: `ps-module publish` no longer has an Addons step and no longer purges the
+  Cloudflare cache; both are manual steps outside the tools (George, 2026-11-18). The spec schema has no publish.addons.
+
 ## 1.5.0
 
 - `prestashopheaven/build-tools` 1.5.0: the CPU guard is removed (George, 2026-11-18): no waiting for the CPU load, no

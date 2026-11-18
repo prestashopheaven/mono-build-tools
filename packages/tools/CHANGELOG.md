@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1] - 2026-11-18
+
+### Verwijderd
+- `publish status` heeft geen stap "Addons upload" meer en `publish done addons` bestaat niet meer.
+- `publish docs` en `publish demo` legen de Cloudflare-cache niet meer (`CLOUDFLARE_*` wordt niet meer gebruikt).
+  Beide doet George zelf met de hand.
+- `resources/factory/spec.schema.json`: `publish.addons` vervalt.
+
 ## [1.5.0] - 2026-11-18
 
 ### Verwijderd

@@ -166,7 +166,7 @@
                             "file"
                         ]
                     },
-                    "default": {},
+                    "default": [],
                     "scope": {
                         "enum": [
                             "shop",
@@ -381,15 +381,11 @@
         "publish": {
             "type": "object",
             "required": [
-                "addons",
                 "docs",
                 "demo",
                 "sales_shop"
             ],
             "properties": {
-                "addons": {
-                    "type": "boolean"
-                },
                 "docs": {
                     "type": "boolean"
                 },

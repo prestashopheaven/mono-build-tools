@@ -7,7 +7,7 @@
  * It is also available through the world-wide-web at this URL:
  * https://opensource.org/licenses/MIT
  *
- * @author    George van Engers | PrestaHaven.com
+ * @author    prestahaven.com
  * @copyright Since 2026 George van Engers
  * @license   https://opensource.org/licenses/MIT MIT License
  */
@@ -17,22 +17,15 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 /**
- * `ps-module publish status` (publish_cmd_status()): the checklist names the zip that belongs to each manual step.
+ * `ps-module publish status` (publish_cmd_status()): the checklist has the docs site, the demo shop and the sales shop;
+ * the Addons upload and the Cloudflare purge are manual steps outside the tool (George, 2026-11-18).
  */
 final class PublishStatusTest extends TestCase
 {
     /**
-     * The Addons upload is the Addons build (dist/addons/<module>.zip), not the direct build with the updater notice.
+     * The checklist lists docs, demo and shop as open, and no Addons or Cloudflare step.
      */
-    public function testAddonsZipIsTheAddonsBuild(): void
-    {
-        $this->assertSame('../dist/addons/heavenfoo.zip', publish_addons_zip(['module' => 'heavenfoo']));
-    }
-
-    /**
-     * The open Addons step in the checklist points at the Addons build.
-     */
-    public function testChecklistNamesTheAddonsBuildForTheAddonsStep(): void
+    public function testChecklistHasDocsDemoAndShopOnly(): void
     {
         $repo = sys_get_temp_dir() . '/ps-module-status-' . getmypid() . '-' . uniqid();
         mkdir("$repo/heavenfoo", 0777, true);
@@ -51,7 +44,24 @@ final class PublishStatusTest extends TestCase
         }
 
         $this->assertSame(1, $code);
-        $this->assertMatchesRegularExpression('#Addons upload\s+open\s+upload \.\./dist/addons/heavenfoo\.zip in the Addons seller account#', $output);
-        $this->assertStringNotContainsString('upload ../dist/heavenfoo.zip', $output);
+        $this->assertMatchesRegularExpression('#Docs site \(PDFs\)\s+open#', $output);
+        $this->assertMatchesRegularExpression('#Demo shop\s+open#', $output);
+        $this->assertMatchesRegularExpression('#Sales shop\s+open#', $output);
+        $this->assertStringContainsString('3 step(s) open.', $output);
+        $this->assertStringNotContainsStringIgnoringCase('addons', $output);
+        $this->assertStringNotContainsStringIgnoringCase('cloudflare', $output);
+    }
+
+    /**
+     * Only the sales-shop zip is a manual step the tool records; "done addons" is refused.
+     */
+    public function testOnlyTheShopIsAManualStep(): void
+    {
+        $this->assertSame(['docs', 'demo', 'shop'], PUBLISH_STEPS);
+        $ctx = ['module' => 'heavenfoo', 'version' => '1.0.0'];
+        $err = fopen('php://memory', 'w+');
+        $this->assertIsResource($err);
+
+        $this->assertSame(2, @publish_cmd_done($ctx, 'addons'));
     }
 }

@@ -16,7 +16,7 @@
  * Publishing a release of a module, after the definition of done: the checklist per version (REL-08).
  * Started by bin/ps-module as: php publish.php <module-dir> <command> [options], in the repo directory.
  *
- *   ps-module publish status [--check]  the checklist of the current version: addons, docs, demo (done or open);
+ *   ps-module publish status [--check]  the checklist of the current version: docs, demo, shop (done or open);
  *                                       --check also asks the docs site which version it shows
  *   ps-module publish site              build dist/docs-site/<module>/: index.php + readme_<iso>.pdf of every language
  *   ps-module publish docs [--dry-run] [--force]
@@ -64,9 +64,9 @@
  *                                       is no product with the module's reference. Needs products PUT, images DELETE.
  *                                       The zip goes in by hand: PrestaShop has no API for virtual product files.
  *                                       Details: src/publish-shop.php
- *   ps-module publish done addons|shop  record a manual step: dist/addons/<module>.zip of this version is uploaded
- *                                       to PrestaShop Addons (no upload API) / dist/<module>.zip is put in the sales
- *                                       shop product by hand
+ *   ps-module publish done shop         record a manual step: dist/<module>.zip is put in the sales shop product by
+ *                                       hand. (The Addons upload and the Cloudflare cache purge are George's own manual
+ *                                       steps since 2026-11-18: this tool neither runs nor tracks them.)
  *   ps-module publish undo <step>       forget a recorded step of the current version
  *
  * docs and demo only publish a released version: tag v<version> exists (the release workflow makes it), or the
@@ -89,8 +89,6 @@
  *   (demo@demo.com) + DEMO_SITE_PASSWORD (demodemo): the public demo login, DEMO_SITE_INTRO_PATH (start): intro page
  *   TRANSIP_LOGIN, TRANSIP_PRIVATE_KEY (file, or the key itself), TRANSIP_VPS_NAME (technical name, e.g. login-vps2), TRANSIP_SNAPSHOT_KEEP (2: the oldest is always kept),
  *   TRANSIP_GLOBAL_KEY (true; false = the key only works from whitelisted IPs)
- *   CLOUDFLARE_API_TOKEN (permission Zone > Cache Purge) + CLOUDFLARE_ZONE_ID: after `publish docs` / `publish demo`
- *   the changed files (PDFs, logo, views/) are purged from the Cloudflare cache; without them the addresses are listed
  *   SALES_SHOP_URL + SALES_SHOP_WEBSERVICE_KEY, optional SALES_SHOP_CATEGORY_ID (2) and SALES_SHOP_TAX_RULES_GROUP_ID:
  *   the own sales shop of `publish shop`
  * In CI the key can be given as text: DOCS_SITE_SFTP_KEY / DEMO_SITE_SSH_KEY may hold the key itself.
@@ -104,7 +102,7 @@ require_once __DIR__ . '/verbose.php';
 require_once __DIR__ . '/publish-shop.php';
 require_once __DIR__ . '/lock.php';
 
-const PUBLISH_STEPS = ['addons', 'docs', 'demo', 'shop'];
+const PUBLISH_STEPS = ['docs', 'demo', 'shop'];
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) {
     exit(publish_main(array_slice($argv, 1)));
@@ -277,7 +275,7 @@ function publish_register_secrets(array $ctx): void
             publish_env_lookup_quiet($ctx, $prefix . $suffix);
         }
     }
-    foreach (['TRANSIP_LOGIN', 'TRANSIP_PRIVATE_KEY', 'CLOUDFLARE_API_TOKEN', 'SALES_SHOP_WEBSERVICE_KEY'] as $key) {
+    foreach (['TRANSIP_LOGIN', 'TRANSIP_PRIVATE_KEY', 'SALES_SHOP_WEBSERVICE_KEY'] as $key) {
         publish_env_lookup_quiet($ctx, $key);
     }
     try {
@@ -366,13 +364,12 @@ function publish_cmd_status(array $ctx, bool $check): int
 {
     $state = publish_state($ctx);
     $how = [
-        'addons' => 'upload ' . publish_addons_zip($ctx) . ' in the Addons seller account, then: vendor/bin/ps-module publish done addons',
         'docs' => 'vendor/bin/ps-module publish docs' . (publish_env($ctx, 'DOCS_SITE_SFTP_HOST') === '' ? '   (needs DOCS_SITE_SFTP_* in .env)' : ''),
         'demo' => 'vendor/bin/ps-module publish demo' . (publish_env($ctx, 'DEMO_SITE_SSH_HOST') === '' ? '   (needs DEMO_SITE_SSH_* in .env)' : ''),
         'shop' => 'vendor/bin/ps-module publish shop (creates the product once, inactive; a later version: publish shop --update for texts and images, put the zip in it by hand, then publish done shop)'
             . (publish_env($ctx, 'SALES_SHOP_URL') === '' ? '   (needs SALES_SHOP_* in .env)' : ''),
     ];
-    $labels = ['addons' => 'Addons upload', 'docs' => 'Docs site (PDFs)', 'demo' => 'Demo shop', 'shop' => 'Sales shop'];
+    $labels = ['docs' => 'Docs site (PDFs)', 'demo' => 'Demo shop', 'shop' => 'Sales shop'];
     echo "Publish checklist for {$ctx['module']} {$ctx['version']}:\n";
     $open = 0;
     foreach (PUBLISH_STEPS as $step) {
@@ -392,33 +389,19 @@ function publish_cmd_status(array $ctx, bool $check): int
 }
 
 /**
- * The zip to upload to Addons, relative to the module folder: the Addons build of `ps-module build`
- * (dist/addons/<module>.zip, without the updater notice and with the module_key, UPD-04). dist/<module>.zip is the
- * direct build for the update server and the sales shop.
- *
- * @param array<string, mixed> $ctx
- */
-function publish_addons_zip(array $ctx): string
-{
-    return '../dist/addons/' . $ctx['module'] . '.zip';
-}
-
-/**
- * Records a manual step (addons) as done for the current version.
+ * Records the manual step (shop: the zip put in the sales shop product) as done for the current version.
  *
  * @param array<string, mixed> $ctx
  */
 function publish_cmd_done(array $ctx, string $step): int
 {
-    if ($step !== 'addons' && $step !== 'shop') {
-        fwrite(STDERR, "ps-module publish done: only 'addons' and 'shop' are manual steps (docs and demo record themselves).\n");
+    if ($step !== 'shop') {
+        fwrite(STDERR, "ps-module publish done: only 'shop' is a manual step (docs and demo record themselves).\n");
 
         return 2;
     }
-    publish_record($ctx, $step, $step === 'addons' ? 'uploaded by hand' : 'zip put in the product by hand');
-    echo $step === 'addons'
-        ? "Recorded: {$ctx['module']} {$ctx['version']} is uploaded to PrestaShop Addons.\n"
-        : "Recorded: the sales shop product of {$ctx['module']} has the zip of {$ctx['version']}.\n";
+    publish_record($ctx, $step, 'zip put in the product by hand');
+    echo "Recorded: the sales shop product of {$ctx['module']} has the zip of {$ctx['version']}.\n";
 
     return 0;
 }
@@ -642,10 +625,6 @@ function publish_cmd_docs(array $ctx, bool $dryRun, bool $force): int
     }
     publish_record($ctx, 'docs', $note);
     echo "Docs site published: $note\n";
-    if (publish_env($ctx, 'DOCS_SITE_URL') !== '') {
-        $folder = rtrim(publish_env($ctx, 'DOCS_SITE_URL'), '/') . '/' . $ctx['module'] . '/';
-        publish_cloudflare_purge($ctx, array_merge([$folder], array_map(static fn (string $f): string => $folder . rawurlencode($f), $files)));
-    }
     publish_demo_refresh_intro($ctx);
 
     return 0;
@@ -748,37 +727,8 @@ function publish_cmd_demo(array $ctx, bool $dryRun, bool $force): int
     $url = publish_env($ctx, 'DEMO_SITE_URL');
     publish_record($ctx, 'demo', "version $version" . ($url !== '' ? " on $url" : '') . ', new snapshot');
     echo "Demo shop has {$ctx['module']} $version and a new snapshot" . ($url !== '' ? " ($url)" : '') . ".\n";
-    if ($url !== '') {
-        publish_cloudflare_purge($ctx, publish_module_asset_urls($zip, $ctx['module'], $url));
-    }
 
     return 0;
-}
-
-/**
- * The public addresses of the static files of a module in a shop (logo.*, views/**: images, CSS, JS, fonts), from its
- * release zip: what a CDN may still serve from an older version after an upgrade.
- *
- * @return list<string>
- */
-function publish_module_asset_urls(string $zipFile, string $module, string $shopUrl): array
-{
-    $zip = new ZipArchive();
-    if ($zip->open($zipFile) !== true) {
-        return [];
-    }
-    $base = rtrim($shopUrl, '/') . '/modules/';
-    $urls = [];
-    for ($i = 0; $i < $zip->numFiles; ++$i) {
-        $name = (string) $zip->getNameIndex($i);
-        if (preg_match('#^' . preg_quote($module, '#') . '/(logo\.(png|gif|svg|jpg)|views/.+\.(png|gif|svg|jpe?g|webp|ico|css|js|woff2?|ttf|eot|map))$#i', $name) === 1) {
-            $urls[] = $base . implode('/', array_map('rawurlencode', explode('/', $name)));
-        }
-    }
-    $zip->close();
-    ps_vlog(count($urls) . " static file address(es) of $module for the CDN purge");
-
-    return $urls;
 }
 
 /**
@@ -1149,67 +1099,6 @@ function publish_after_deploy(array $ctx, string $what): int
 
         return 1;
     }
-}
-
-/**
- * After an upload: the files of a new version keep their address (modules/<module>/logo.png, readme_<iso>.pdf), and a
- * CDN in front of the server (Cloudflare) keeps serving the old copy for as long as the server's Cache-Control allows
- * (10 years for static files on many servers). With CLOUDFLARE_API_TOKEN (permission Zone > Cache Purge) and
- * CLOUDFLARE_ZONE_ID the addresses are purged through the API, 30 per request; without them the addresses are listed
- * for a purge by hand. A failing purge is reported but does not undo the deploy.
- *
- * @param array<string, mixed> $ctx
- * @param list<string> $urls
- */
-function publish_cloudflare_purge(array $ctx, array $urls): void
-{
-    $urls = array_values(array_unique(array_filter($urls, static fn (string $u): bool => preg_match('#^https?://#', $u) === 1)));
-    if ($urls === []) {
-        return;
-    }
-    $token = publish_env($ctx, 'CLOUDFLARE_API_TOKEN');
-    $zone = publish_env($ctx, 'CLOUDFLARE_ZONE_ID');
-    if ($token === '' || $zone === '') {
-        echo "Cloudflare cache: not purged (no CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID). Visitors may see the old files until\n"
-            . "  these addresses are purged (Cloudflare dashboard > Caching > Configuration > Custom Purge):\n";
-        foreach ($urls as $url) {
-            echo "  $url\n";
-        }
-
-        return;
-    }
-    if (!function_exists('curl_init')) {
-        fwrite(STDERR, "ps-module publish: the PHP curl extension is needed to purge the Cloudflare cache.\n");
-
-        return;
-    }
-    $purged = 0;
-    foreach (array_chunk($urls, 30) as $chunk) {
-        $ch = curl_init('https://api.cloudflare.com/client/v4/zones/' . rawurlencode($zone) . '/purge_cache');
-        curl_setopt_array($ch, [
-            CURLOPT_CUSTOMREQUEST => 'POST',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
-            CURLOPT_POSTFIELDS => (string) json_encode(['files' => $chunk]),
-        ]);
-        $start = microtime(true);
-        $raw = curl_exec($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        unset($ch);
-        $body = is_string($raw) ? json_decode($raw, true) : null;
-        ps_vlog(sprintf('Cloudflare purge of %d address(es): HTTP %d after %.1fs', count($chunk), $status, microtime(true) - $start));
-        if (!is_array($body) || empty($body['success'])) {
-            $message = is_array($body) ? implode('; ', array_map(static fn ($e): string => is_array($e) ? (string) ($e['message'] ?? '') : '', (array) ($body['errors'] ?? []))) : $error;
-            fwrite(STDERR, "ps-module publish: the upload is done, but the Cloudflare purge failed (HTTP $status): $message\n"
-                . "  Purge by hand: Cloudflare dashboard > Caching > Configuration > Custom Purge.\n");
-
-            return;
-        }
-        $purged += count($chunk);
-    }
-    echo "Cloudflare cache purged: $purged address(es).\n";
 }
 
 /**
