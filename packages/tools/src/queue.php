@@ -27,6 +27,8 @@
  *   ps-module queue result <id> [--lines=N]  exit code, times and the last N lines of the log; marks it as read
  *   ps-module queue list [--json] [--pool=X] every job: state, module, thread, position, age; the coordinator's view
  *   ps-module queue cancel <id>              a queued job is cancelled, a running one is stopped
+ *   ps-module queue set --pool=X --max=N     change the limit while running (raise: starts at once; lower: running jobs finish)
+ *   ps-module queue pools                    per pool: the limit, running and queued jobs
  *   ps-module queue work --pool=X [--once]   the worker (started by submit when none runs; --once: one pass, tests)
  *
  * Storage: <workspace>/.cache/queue/<pool>/<id>.json per job, <id>.log for its output; every change under the
@@ -76,6 +78,29 @@ function queue_pool(string $dir, string $pool): array
     $max = (int) ($settings[$pool]['max'] ?? QUEUE_POOLS[$pool]['max']);
 
     return ['max' => max(1, $max)];
+}
+
+/**
+ * Changes the limit of a pool while the queue runs. The worker reads it on every pass (every 2 seconds): a higher
+ * limit starts waiting jobs at once; a lower one lets the running jobs finish and starts nothing new until the pool is
+ * below it.
+ *
+ * @throws InvalidArgumentException for an unknown pool or a limit below 1
+ */
+function queue_set_max(string $dir, string $pool, int $max): void
+{
+    queue_pool($dir, $pool);
+    if ($max < 1 || $max > 16) {
+        throw new InvalidArgumentException('The limit of a pool is 1 to 16.');
+    }
+    @mkdir($dir, 0775, true);
+    queue_locked($dir, $pool, static function () use ($dir, $pool, $max): void {
+        $settings = json_decode((string) @file_get_contents("$dir/pools.json"), true);
+        $settings = is_array($settings) ? $settings : [];
+        $settings[$pool]['max'] = $max;
+        file_put_contents("$dir/pools.json.tmp", json_encode($settings, JSON_PRETTY_PRINT) . "\n");
+        rename("$dir/pools.json.tmp", "$dir/pools.json");
+    });
 }
 
 /**
@@ -528,6 +553,21 @@ function queue_main(string $cwd, array $args): int
                     queue_save($dir, $job);
                 });
                 echo "Cancelled {$job['id']}.\n";
+
+                return 0;
+            case 'set':
+                $pool = (string) ($options['pool'] ?? '');
+                queue_set_max($dir, $pool, (int) ($options['max'] ?? 0));
+                queue_ensure_worker($dir, $pool);
+                echo "Pool $pool: at most {$options['max']} job(s) at once (the worker picks it up within 2 seconds).\n";
+
+                return 0;
+            case 'pools':
+                foreach (array_keys(QUEUE_POOLS) as $pool) {
+                    $jobs = queue_jobs($dir, $pool);
+                    $count = static fn (string $state): int => count(array_filter($jobs, static fn (array $j): bool => $j['state'] === $state));
+                    printf("%-6s max %d, running %d, queued %d\n", $pool, queue_pool($dir, $pool)['max'], $count('running'), $count('queued'));
+                }
 
                 return 0;
             case 'work':

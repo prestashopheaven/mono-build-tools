@@ -119,6 +119,28 @@ final class QueueTest extends TestCase
         self::assertSame(['max' => 1], queue_pool($this->dir, 'shops'), 'never below 1');
     }
 
+    public function testTheLimitCanChangeWhileRunning(): void
+    {
+        queue_set_max($this->dir, 'shops', 5);
+        self::assertSame(['max' => 5], queue_pool($this->dir, 'shops'));
+        self::assertSame(['max' => 3], queue_pool($this->dir, 'docs'), 'the other pool keeps its own limit');
+
+        $jobs = [self::job('1', 'a', 'running'), self::job('2', 'b', 'running'), self::job('3', 'c', 'running'), self::job('4', 'd')];
+        queue_set_max($this->dir, 'shops', 2);
+        self::assertSame([], queue_startable($jobs, queue_pool($this->dir, 'shops')['max']), 'lowered: nothing new starts while above the limit');
+        queue_set_max($this->dir, 'shops', 4);
+        self::assertSame(['4'], array_column(queue_startable($jobs, queue_pool($this->dir, 'shops')['max']), 'id'), 'raised: a waiting job starts');
+
+        foreach ([0, 17] as $wrong) {
+            try {
+                queue_set_max($this->dir, 'shops', $wrong);
+                self::fail("$wrong is not a limit");
+            } catch (InvalidArgumentException $e) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function testAJobOfAGoneWorkerIsRequeuedOnceThenFailed(): void
     {
         $job = queue_submit($this->dir, 'docs', 'heavena', '/x', ['a']);
