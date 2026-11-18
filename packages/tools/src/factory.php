@@ -416,12 +416,100 @@ function factory_stage_problems(string $repoDir, string $stage): array
             }
             $tag = trim((string) @shell_exec('git -C ' . escapeshellarg($repoDir) . ' ls-remote --tags origin ' . escapeshellarg("refs/tags/v$version") . ' 2>' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null')), " \n\r\t\v\0");
 
-            return $tag === '' ? ["Release v$version is not on GitHub yet: merge the release (ps-module git pr --release $version --publish)."] : [];
+            if ($tag === '') {
+                return ["Release v$version is not on GitHub yet: merge the release (ps-module git pr --release $version --publish)."];
+            }
+            $moduleDir = dod_module_dir($repoDir);
+
+            return factory_release_problems(factory_release_status($moduleDir === null ? '' : basename($moduleDir), $version), factory_json($repoDir, 'spec.json') ?? []);
         case 'retro':
             return is_file(factory_path($repoDir, 'retro.md')) ? [] : ['.factory/retro.md is missing: what went wrong, and the proposed rule, check, generator or pitfall.'];
         default:
             throw new InvalidArgumentException("Unknown stage $stage (known: " . implode(', ', FACTORY_STAGES) . ').');
     }
+}
+
+/**
+ * Asks the update server (UPDATE_SERVER_URL, default https://updates.prestahaven.com) for the status of a release:
+ * accepted or not, and the sales-sync jobs (decision F8). The request is signed with the release signing key
+ * (UPDATE_SIGNING_KEY), so no extra secret is needed. Returns the decoded answer, or an array with "error".
+ *
+ * @param callable(string, list<string>): (string|false) $fetch GETs a URL with headers (tests pass their own)
+ * @param callable(): string $secretKey the raw ed25519 secret key (update_signing_key() by default)
+ *
+ * @return array<string, mixed>
+ */
+function factory_release_status(string $module, string $version, ?callable $fetch = null, ?callable $secretKey = null, ?int $now = null): array
+{
+    if (preg_match('/^[a-z][a-z0-9_]{1,63}$/', $module) !== 1) {
+        return ['error' => "The module name \"$module\" cannot be read."];
+    }
+    $base = rtrim((string) (getenv('UPDATE_SERVER_URL') ?: 'https://updates.prestahaven.com'), '/');
+    $path = "/internal/factory/v1/releases/$module/$version";
+    $timestamp = (string) ($now ?? time());
+    try {
+        if ($secretKey === null) {
+            require_once __DIR__ . '/update-sign.php';
+            $secretKey = 'update_signing_key';
+        }
+        $signature = base64_encode(sodium_crypto_sign_detached("factory-v1\nGET\n$path\n$timestamp", $secretKey()));
+    } catch (Throwable $e) {
+        return ['error' => 'The release cannot be checked on the update server: ' . $e->getMessage()];
+    }
+    $fetch ??= static function (string $url, array $headers): string|false {
+        $context = stream_context_create(['http' => ['method' => 'GET', 'header' => implode("\r\n", $headers), 'timeout' => 20, 'ignore_errors' => true]]);
+
+        return @file_get_contents($url, false, $context);
+    };
+    $body = $fetch($base . $path, ["X-Factory-Timestamp: $timestamp", "X-Factory-Signature: $signature", 'Accept: application/json']);
+    $data = is_string($body) ? json_decode($body, true) : null;
+    if (!is_array($data)) {
+        return ['error' => "The update server did not answer for $module $version."];
+    }
+    if (isset($data['error'])) {
+        return ['error' => "The update server refused the status request for $module $version (" . (string) $data['error'] . '): check UPDATE_SIGNING_KEY.'];
+    }
+
+    return $data;
+}
+
+/**
+ * The problems of a release status (factory_release_status()) for the release gate: the server must have accepted
+ * the version, and when the spec publishes to the sales shop, its sales-sync job must be done.
+ *
+ * @param array<string, mixed> $status
+ * @param array<string, mixed> $spec
+ *
+ * @return list<string>
+ */
+function factory_release_problems(array $status, array $spec): array
+{
+    if (isset($status['error'])) {
+        return [(string) $status['error']];
+    }
+    $label = ($status['module'] ?? '?') . ' ' . ($status['version'] ?? '?');
+    $release = is_array($status['release'] ?? null) ? $status['release'] : null;
+    if ($release === null) {
+        return ["The update server has no release $label yet: the GitHub webhook may still be on its way (try again in a few minutes)."];
+    }
+    if (($release['status'] ?? '') !== 'accepted') {
+        return ["The update server has $label as \"" . ($release['status'] ?? '?') . '"' . (isset($release['reason']) && $release['reason'] !== null ? " ({$release['reason']})" : '') . ': it must be accepted (Update-* trailers of the release commit, UPD-06).'];
+    }
+    if (($spec['publish']['sales_shop'] ?? false) !== true) {
+        return [];
+    }
+    if (($status['sales']['product'] ?? false) !== true) {
+        return ["The sales shop has no product for $label yet: run ps-module publish shop (factory-release step 3)."];
+    }
+    $jobs = is_array($status['sales']['jobs'] ?? null) ? $status['sales']['jobs'] : [];
+    foreach ($jobs as $job) {
+        if (is_array($job) && ($job['status'] ?? '') === 'done') {
+            return [];
+        }
+    }
+    $states = array_map(static fn (mixed $job): string => is_array($job) ? (string) ($job['status'] ?? '?') : '?', $jobs);
+
+    return ["The sales shop has not received the zip of $label yet (sales-sync jobs: " . ($states === [] ? 'none' : implode(', ', $states)) . '); heavensalessync polls every 15 minutes.'];
 }
 
 /**

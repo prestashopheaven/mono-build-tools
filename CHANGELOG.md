@@ -2,6 +2,12 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.4.0
+
+- `prestashopheaven/build-tools` 1.4.0: the release gate asks the update server whether the version is accepted and
+  whether the sales shop received its zip (signed with the release key; update-server endpoint
+  `/internal/factory/v1/releases/{module}/{version}`).
+
 ## 1.3.0
 
 - `prestashopheaven/build-tools` 1.3.0: `ps-module make cqrs` (commands, queries, handlers and their bus tags from

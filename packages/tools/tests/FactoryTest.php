@@ -382,6 +382,50 @@ final class FactoryTest extends TestCase
         self::assertStringContainsString('Gate intake passed.', $out);
     }
 
+    public function testTheReleaseStatusRequestIsSignedWithTheReleaseKey(): void
+    {
+        $pair = sodium_crypto_sign_keypair();
+        $seen = [];
+        $status = factory_release_status('heavenvatchecker', '1.0.0', static function (string $url, array $headers) use (&$seen): string {
+            $seen = [$url, $headers];
+
+            return '{"module":"heavenvatchecker","version":"1.0.0","release":{"status":"accepted"}}';
+        }, static fn (): string => sodium_crypto_sign_secretkey($pair), 1800000000);
+
+        self::assertSame('accepted', $status['release']['status'] ?? null);
+        self::assertSame('https://updates.prestahaven.com/internal/factory/v1/releases/heavenvatchecker/1.0.0', $seen[0]);
+        self::assertSame('X-Factory-Timestamp: 1800000000', $seen[1][0]);
+        $signature = base64_decode(substr($seen[1][1], strlen('X-Factory-Signature: ')), true);
+        self::assertIsString($signature);
+        self::assertTrue(sodium_crypto_sign_verify_detached($signature, "factory-v1\nGET\n/internal/factory/v1/releases/heavenvatchecker/1.0.0\n1800000000", sodium_crypto_sign_publickey($pair)));
+    }
+
+    public function testTheReleaseStatusReportsEveryFailure(): void
+    {
+        $key = static fn (): string => sodium_crypto_sign_secretkey(sodium_crypto_sign_keypair());
+        self::assertStringContainsString('cannot be read', factory_release_status('', '1.0.0')['error'] ?? '');
+        self::assertStringContainsString('did not answer', factory_release_status('heavenx', '1.0.0', static fn (string $u, array $h): bool => false, $key)['error'] ?? '');
+        self::assertStringContainsString('refused the status request', factory_release_status('heavenx', '1.0.0', static fn (string $u, array $h): string => '{"error":"not_found"}', $key)['error'] ?? '');
+        self::assertStringContainsString('cannot be checked', factory_release_status('heavenx', '1.0.0', static fn (string $u, array $h): string => '{}', static function (): string {
+            throw new RuntimeException('UPDATE_SIGNING_KEY is not set');
+        })['error'] ?? '');
+    }
+
+    public function testTheReleaseGateNeedsAcceptanceAndTheSalesShopZip(): void
+    {
+        $sales = ['publish' => ['sales_shop' => true]];
+        $accepted = ['module' => 'heavenx', 'version' => '1.0.0', 'release' => ['status' => 'accepted', 'reason' => null], 'sales' => ['product' => true, 'jobs' => [['status' => 'queued'], ['status' => 'done']]]];
+
+        self::assertSame([], factory_release_problems($accepted, $sales));
+        self::assertSame([], factory_release_problems(['release' => ['status' => 'accepted']] + $accepted, ['publish' => ['sales_shop' => false]]));
+        self::assertSame(['boom'], factory_release_problems(['error' => 'boom'], $sales));
+        self::assertStringContainsString('has no release heavenx 1.0.0 yet', factory_release_problems(['release' => null] + $accepted, $sales)[0]);
+        self::assertStringContainsString('as "pending" (no Update trailers)', factory_release_problems(['release' => ['status' => 'pending', 'reason' => 'no Update trailers']] + $accepted, $sales)[0]);
+        self::assertStringContainsString('has no product', factory_release_problems(['sales' => ['product' => false, 'jobs' => []]] + $accepted, $sales)[0]);
+        self::assertStringContainsString('(sales-sync jobs: queued, delivered)', factory_release_problems(['sales' => ['product' => true, 'jobs' => [['status' => 'queued'], ['status' => 'delivered']]]] + $accepted, $sales)[0]);
+        self::assertStringContainsString('(sales-sync jobs: none)', factory_release_problems(['sales' => ['product' => true, 'jobs' => []]] + $accepted, $sales)[0]);
+    }
+
     public function testTheRepositoryIsFoundFromASubfolderOrGiven(): void
     {
         mkdir($this->repo . '/.factory');

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0] - 2026-11-18
+
+### Nieuw
+- `ps-module factory gate release` vraagt de update-server (`UPDATE_SERVER_URL`, standaard
+  https://updates.prestahaven.com) of de versie geaccepteerd is en, als de spec naar de verkoopwinkel publiceert, of
+  de sales-sync-job klaar is (`factory_release_status()`, `factory_release_problems()`). Het verzoek is ondertekend met
+  de release-sleutel (`UPDATE_SIGNING_KEY`): geen extra geheim.
+
 ## [1.3.0] - 2026-11-18
 
 ### Nieuw
