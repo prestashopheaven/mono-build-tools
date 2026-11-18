@@ -13,6 +13,13 @@
   enable, disable, template, down).
 - `ps_lock_at()` in `lock.php`: locks in een eigen map zonder `PS_MODULE_LOCK_DIR` van het proces te veranderen.
 
+## [1.6.2] - 2026-11-18
+
+### Opgelost
+- Multistore-ronde, "configuration page per shop context": ook een `<input type="number">` is een kandidaat-veld (met
+  de numerieke markeerwaarde). Een formulier met alleen getalvelden en één e-mailveld (`heavenipriskdetector`) had
+  anders geen veld dat de markeerwaarde aanneemt.
+
 ## [1.6.1] - 2026-11-18
 
 ### Opgelost

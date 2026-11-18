@@ -11,6 +11,10 @@ All packages of this monorepo share one version. Per package details: its own `C
   made from a template per PrestaShop version; the docs use a template with their languages installed. Off by default
   and never in CI.
 
+## 1.6.2
+
+- `prestashopheaven/build-tools` 1.6.2: the multistore form check also tries number inputs (with the numeric marker).
+
 ## 1.6.1
 
 - `prestashopheaven/build-tools` 1.6.1: the multistore round tries the text fields of the settings form in order until

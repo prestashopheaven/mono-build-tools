@@ -150,4 +150,17 @@ final class MultistoreFormParserTest extends TestCase
         self::assertSame(['form[a]', 'form[b]'], array_keys($picked['refused']));
         self::assertSame(['field' => null, 'error' => null, 'refused' => []], msPickTextField([], static fn (string $field): ?string => 'x'));
     }
+
+    public function testANumberInputIsATextFieldCandidateInPageOrder(): void
+    {
+        $page = msParseFormPage($this->form(
+            '<input type="number" name="form[medium]" value="30" />'
+            . '<input type="text" name="form[emails]" value="" />'
+            . '<input type="number" name="form[days]" value="365" />'
+        ), self::PAGE);
+
+        self::assertIsArray($page);
+        self::assertSame(['form[medium]', 'form[emails]', 'form[days]'], $page['text']);
+        self::assertSame('365', $page['fields']['form[days]']);
+    }
 }

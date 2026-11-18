@@ -655,8 +655,10 @@ function msParseFormPage(string $html, string $final): array|string
             preg_match('/<option[^>]*\bselected\b[^>]*value="([^"]*)"|<option[^>]*value="([^"]*)"[^>]*\bselected\b/i', $content, $o);
             $value = html_entity_decode(($o[1] ?? '') !== '' ? $o[1] : ($o[2] ?? ''));
         }
-        if ($type === 'text') {
-            $page['text'][] = $fieldName; // also when disabled: in a shop context the checkbox enables it
+        if ($type === 'text' || $type === 'number') {
+            // A number input (IntegerType/NumberType in some PrestaShop versions) is a text field too: it gets the
+            // numeric marker. Also when disabled: in a shop context the checkbox enables it.
+            $page['text'][] = $fieldName;
         }
         if ($disabled) {
             continue; // browsers do not send disabled fields
