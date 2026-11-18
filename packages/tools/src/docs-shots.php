@@ -638,6 +638,8 @@ function docs_shots_on_shop(array $ctx, string $version, array $shots, bool $kee
 
     try {
         ps_lock('shops-' . $ctx['module'], "docs screenshots on PrestaShop $version", $ctx['repo']);
+        // CPU guard (F9): one test-shop stack at a time on this PC (the shops commands started from here inherit it).
+        ps_lock('shop-stack', "docs screenshots on PrestaShop $version ({$ctx['module']})", $ctx['repo']);
     } catch (RuntimeException $e) {
         return ['error' => $e->getMessage()];
     }

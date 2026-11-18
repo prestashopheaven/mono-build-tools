@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0] - 2026-11-18
+
+### Nieuw
+- `ps-module factory init|status|gate|approve|review|wait-package` (`src/factory.php`): de pipeline van de
+  Module-Factory per module-repo in `.factory/` (state, spec, research, design, reviews). Een gate slaagt alleen als
+  alle eerdere gates op hun huidige invoer geslaagd zijn; een stempel hoort bij de hash van zijn invoer, dus een
+  gewijzigde spec, design of code maakt hem (en de latere) verouderd. Geen commando om een gate met de hand af te
+  vinken.
+- CPU-bewaking (`src/cpu.php`, besluit F9: de pc nooit boven 80 % CPU): een testwinkel, PHPStan en docs-screenshots
+  starten pas onder de startgrens (`PS_MODULE_CPU_START`, standaard 60 %); PHPStan met een beperkt aantal workers
+  (`PS_MODULE_CPU_WORKERS`, standaard een kwart van de cores); elke container een CPU-limiet (PrestaShop
+  `PS_MODULE_SHOP_CPUS`, standaard 2; database 1); één testwinkel-stack tegelijk over alle modules en sessies (lock
+  `shop-stack`). `PS_MODULE_CPU_GUARD=0` zet het wachten uit (CI).
+- `ps-module rules ...` start `bin/rules.php` van build-rules-core (mono-build-rules).
+
 ## [1.0.4] - 2026-11-17
 
 ### Opgelost

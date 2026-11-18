@@ -2,6 +2,13 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.1.0
+
+- `prestashopheaven/build-tools` 1.1.0: the Module-Factory pipeline (`ps-module factory`: state, gates in order with
+  stamps on their inputs, final approval, reviewer verdicts, waiting for a package on Packagist), the CPU guard (heavy
+  work starts below 60 % CPU, limited workers, one test-shop stack at a time, CPU limits per container) and
+  `ps-module rules` (the rules registry of mono-build-rules).
+
 ## 1.0.4
 
 - `prestashopheaven/build-tools` 1.0.4: the multistore check of the configuration page (`ps-module shops run`) reads

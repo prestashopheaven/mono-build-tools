@@ -26,6 +26,7 @@
  */
 
 require_once __DIR__ . '/verbose.php';
+require_once __DIR__ . '/cpu.php';
 
 $moduleDir = rtrim(str_replace('\\', '/', (string) getcwd()), '/');
 // A monorepo (ps-module mono check) generates its config.json and phpstan.neon into .cache and points here with
@@ -76,7 +77,15 @@ foreach ($runs as $label => $root) {
     $tmpDir = $moduleDir . '/.cache/phpstan/' . preg_replace('/[^A-Za-z0-9._-]/', '_', (string) $label);
     @mkdir($tmpDir, 0775, true);
     $wrapper = $moduleDir . '/.cache/phpstan/' . preg_replace('/[^A-Za-z0-9._-]/', '_', (string) $label) . '.neon';
-    file_put_contents($wrapper, "includes:\n    - " . str_replace('\\', '/', $neon) . "\nparameters:\n    tmpDir: " . str_replace('\\', '/', $tmpDir) . "\n");
+    // CPU guard (F9): a limited number of worker processes (cpu.php), and start only below the start limit.
+    file_put_contents($wrapper, "includes:\n    - " . str_replace('\\', '/', $neon) . "\nparameters:\n    tmpDir: " . str_replace('\\', '/', $tmpDir)
+        . "\n    parallel:\n        maximumNumberOfProcesses: " . ps_cpu_workers() . "\n");
+    try {
+        ps_cpu_wait("PHPStan against PrestaShop $label");
+    } catch (RuntimeException $e) {
+        fwrite(STDERR, $e->getMessage() . "\n");
+        exit(1);
+    }
     $cmd = escapeshellarg(PHP_BINARY) . ' -d memory_limit=2G ' . escapeshellarg($phpstan)
         . ' analyse --no-progress --configuration=' . escapeshellarg($wrapper)
         . ' ' . implode(' ', array_map('escapeshellarg', $paths));

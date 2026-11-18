@@ -71,6 +71,10 @@
  *                                    compatibility check of an external package (B1-B8; exit 0 = use, 1 = write our own)
  *   (find, ps and external need the packages of mono-build-knowledge: build-package-index, build-prestashop-index,
  *   build-external)
+ *   ps-module factory init|status|gate <stage>|approve|review|wait-package
+ *                                    the Module-Factory pipeline of this repository (src/factory.php)
+ *   ps-module rules validate|list|show <ID>|stage <stage>|generate
+ *                                    the rules registry (build-rules-core of mono-build-rules)
  *
  * Every command takes -v / --verbose (anywhere on the line; or PS_MODULE_VERBOSE=1): it then reports each step, every
  * program it runs (folder, exit code, time) and every remote action on STDERR, with secrets shown as ***.
@@ -192,6 +196,15 @@ switch ($command) {
     case 'mono':
         // The monorepos of the package collection (src/mono.php); works without a module.
         exit(script('mono.php', $args));
+
+    case 'factory':
+        // The Module-Factory pipeline of one module repository: state, gates, approval, reviews, package waits
+        // (src/factory.php); works before the module is scaffolded (--repo=DIR).
+        exit(script('factory.php', $args));
+
+    case 'rules':
+        // The rules registry of the Module-Factory (build-rules-core of mono-build-rules).
+        exit(knowledge('rules-core', 'rules.php', $args, $moduleDir, 'mono-build-rules'));
 
     case 'find':
         // PKG-01: search the package index first; --external searches Packagist and npm (and checks the best hits).
@@ -569,7 +582,7 @@ function script(string $file, array $args, string $cwd = ''): int
  * the vendor/ of the module (or of the current directory), else from libraries/mono-build-knowledge of the workspace
  * (a parent directory). Null when neither has it.
  */
-function knowledgeScript(string $package, string $script, ?string $moduleDir): ?string
+function knowledgeScript(string $package, string $script, ?string $moduleDir, string $monorepo = 'mono-build-knowledge'): ?string
 {
     foreach (array_filter([$moduleDir, (string) getcwd()]) as $dir) {
         $file = dod_norm((string) $dir) . "/vendor/prestashopheaven/build-$package/bin/$script";
@@ -578,7 +591,7 @@ function knowledgeScript(string $package, string $script, ?string $moduleDir): ?
         }
     }
     for ($dir = dod_norm((string) getcwd()); $dir !== dirname($dir); $dir = dirname($dir)) {
-        $file = "$dir/libraries/mono-build-knowledge/packages/$package/bin/$script";
+        $file = "$dir/libraries/$monorepo/packages/$package/bin/$script";
         if (is_file($file)) {
             return $file;
         }
@@ -592,9 +605,9 @@ function knowledgeScript(string $package, string $script, ?string $moduleDir): ?
  *
  * @param list<string> $args
  */
-function knowledge(string $package, string $script, array $args, ?string $moduleDir): int
+function knowledge(string $package, string $script, array $args, ?string $moduleDir, string $monorepo = 'mono-build-knowledge'): int
 {
-    $file = knowledgeScript($package, $script, $moduleDir);
+    $file = knowledgeScript($package, $script, $moduleDir, $monorepo);
     if ($file === null) {
         fwrite(STDERR, "ps-module: prestashopheaven/build-$package is not installed: composer require --dev prestashopheaven/build-$package\n");
 
