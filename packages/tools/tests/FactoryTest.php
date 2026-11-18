@@ -59,9 +59,34 @@ final class FactoryTest extends TestCase
             'module_name' => 'heavenvatchecker',
             'display_name' => 'B2B VAT Number Checker',
             'description' => 'Checks EU VAT numbers with VIES.',
-            'needs' => [['id' => 'N1', 'text' => 'Check a VAT number with VIES'], ['id' => 'N2', 'text' => 'Remove VAT for valid numbers']],
-            'settings' => [['key' => 'HEAVENVATCHECKER_HOME_COUNTRY', 'default' => 'NL']],
-            'acceptance' => ['A valid NL number keeps VAT'],
+            'namespace' => 'PrestaShopHeaven\\VatChecker',
+            'repo_slug' => 'heaven-vat-checker',
+            'tab' => 'billing_invoicing',
+            'ps_min' => '8.1.0',
+            'ps_max' => null,
+            'php_min' => '8.1',
+            'distribution' => 'addons',
+            'license' => 'afl',
+            'price' => 59.99,
+            'languages' => ['en', 'nl'],
+            'features' => ['config-form', 'action-hooks', 'external-api'],
+            'needs' => [['id' => 'N1', 'text' => 'Check a VAT number with VIES', 'priority' => 'must'], ['id' => 'N2', 'text' => 'Remove VAT for valid numbers']],
+            'settings' => [['key' => 'HEAVENVATCHECKER_HOME_COUNTRY', 'label' => 'Home country', 'type' => 'select', 'default' => 'NL', 'scope' => 'shop']],
+            'screens' => [['id' => 'config', 'where' => 'Module configuration', 'shows' => 'The settings']],
+            'mails' => [],
+            'data' => [['name' => 'vat_check', 'fields' => ['vat_number', 'valid', 'checked_at'], 'retention' => '2 years']],
+            'external_services' => [['name' => 'VIES', 'purpose' => 'Check numbers', 'credentials' => 'none', 'when_down' => 'Keep VAT']],
+            'edge_cases' => ['VIES is down: the customer pays VAT'],
+            'multistore' => 'The home country is set per shop.',
+            'compatibility' => 'One-page checkouts',
+            'acceptance' => [
+                ['id' => 'A1', 'need' => 'N1', 'given' => 'a valid DE number', 'when' => 'the address is saved', 'then' => 'it is marked valid'],
+                ['id' => 'A2', 'need' => 'N2', 'given' => 'a valid DE number', 'when' => 'the cart is shown', 'then' => 'no VAT is charged'],
+            ],
+            'marketing' => ['category' => 'billing', 'audience' => 'B2B shops in the EU', 'benefits' => ['No manual VAT checks']],
+            'logo' => ['concept' => 'A shield with a check mark'],
+            'publish' => ['addons' => true, 'docs' => true, 'demo' => true, 'sales_shop' => true],
+            'out_of_scope' => ['Non-EU VAT systems'],
         ];
     }
 
@@ -133,17 +158,25 @@ final class FactoryTest extends TestCase
     {
         factory_init($this->repo, null);
         $spec = self::spec();
-        unset($spec['acceptance']);
-        $spec['description'] = 'TODO';
+        unset($spec['logo']);
+        $spec['description'] = 'TODO later';
         $spec['needs'][] = ['id' => 'N1', 'text' => ' '];
+        $spec['needs'][] = ['id' => 'N3', 'text' => 'Log every check'];
+        $spec['settings'][0]['scope'] = 'everywhere';
+        $spec['edge_cases'] = [];
+        $spec['languages'] = 'en';
         $this->write('spec.json', $spec);
 
         $problems = factory_gate($this->repo, 'intake');
 
-        self::assertContains('spec.json: acceptance is missing or empty.', $problems);
-        self::assertContains('spec.json: "description" still holds a placeholder: TODO', $problems);
-        self::assertContains('spec.json: need 2 needs an id and a text.', $problems);
+        self::assertContains('spec.json.logo is missing.', $problems);
+        self::assertContains('spec.json: "description" still holds a placeholder: TODO later', $problems);
+        self::assertContains('spec.json.needs[2].text is too short (at least 5 characters).', $problems);
         self::assertContains('spec.json: a need id is used twice.', $problems);
+        self::assertContains('spec.json: need N3 has no acceptance scenario (acceptance[].need = "N3").', $problems);
+        self::assertContains('spec.json.settings[0].scope must be one of "shop", "group", "global".', $problems);
+        self::assertContains('spec.json.edge_cases needs at least 1 item(s).', $problems);
+        self::assertContains('spec.json.languages must be array, not string.', $problems);
         self::assertContains('The final approval is missing: after the interview, ask for it and record it with ps-module factory approve.', $problems);
     }
 

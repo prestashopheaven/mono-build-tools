@@ -2,6 +2,12 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.2.0
+
+- `prestashopheaven/build-tools` 1.2.0: the intake gate checks `.factory/spec.json` against
+  `resources/factory/spec.schema.json` (everything the autonomous run needs) and asks an acceptance scenario per need;
+  the stage order is now intake, research, design, build, content, verify, release, retro.
+
 ## 1.1.0
 
 - `prestashopheaven/build-tools` 1.1.0: the Module-Factory pipeline (`ps-module factory`: state, gates in order with

@@ -1,0 +1,437 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Module-Factory spec (.factory/spec.json)",
+    "description": "Everything the run needs after the one human step (decision F3/F6): the intake interview asks it all, the person approves it once, and the rest runs on its own. A change to an existing module fills the same fields for the change and adds 'change'.",
+    "type": "object",
+    "required": [
+        "module_name",
+        "display_name",
+        "description",
+        "namespace",
+        "repo_slug",
+        "tab",
+        "ps_min",
+        "php_min",
+        "distribution",
+        "license",
+        "languages",
+        "features",
+        "needs",
+        "settings",
+        "screens",
+        "mails",
+        "data",
+        "edge_cases",
+        "multistore",
+        "compatibility",
+        "acceptance",
+        "marketing",
+        "logo",
+        "publish",
+        "out_of_scope"
+    ],
+    "properties": {
+        "idea": {
+            "type": "string",
+            "description": "The person's idea, word for word."
+        },
+        "module_name": {
+            "type": "string",
+            "pattern": "^heaven[a-z0-9]{2,}$"
+        },
+        "display_name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 64
+        },
+        "description": {
+            "type": "string",
+            "minLength": 10
+        },
+        "namespace": {
+            "type": "string",
+            "pattern": "^PrestaShopHeaven\\\\[A-Z][A-Za-z0-9]+$"
+        },
+        "repo_slug": {
+            "type": "string",
+            "pattern": "^heaven-[a-z0-9-]+$"
+        },
+        "tab": {
+            "type": "string"
+        },
+        "ps_min": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "ps_max": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "php_min": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+$"
+        },
+        "distribution": {
+            "enum": [
+                "addons",
+                "own-clients",
+                "internal"
+            ]
+        },
+        "license": {
+            "enum": [
+                "afl",
+                "mit",
+                "proprietary"
+            ]
+        },
+        "price": {
+            "type": "number",
+            "minimum": 0
+        },
+        "languages": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "string",
+                "pattern": "^[a-z]{2}$"
+            }
+        },
+        "features": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "needs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "text"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "pattern": "^N\\d+$"
+                    },
+                    "text": {
+                        "type": "string",
+                        "minLength": 5
+                    },
+                    "priority": {
+                        "enum": [
+                            "must",
+                            "should",
+                            "later"
+                        ]
+                    }
+                }
+            }
+        },
+        "settings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "key",
+                    "label",
+                    "type",
+                    "default",
+                    "scope"
+                ],
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "pattern": "^[A-Z][A-Z0-9_]+$"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "enum": [
+                            "bool",
+                            "int",
+                            "float",
+                            "text",
+                            "html",
+                            "select",
+                            "multiselect",
+                            "color",
+                            "date",
+                            "file"
+                        ]
+                    },
+                    "default": {},
+                    "scope": {
+                        "enum": [
+                            "shop",
+                            "group",
+                            "global"
+                        ]
+                    },
+                    "validation": {
+                        "type": "string"
+                    },
+                    "options": {
+                        "type": "array"
+                    }
+                }
+            }
+        },
+        "screens": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "where",
+                    "shows"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "where": {
+                        "type": "string"
+                    },
+                    "shows": {
+                        "type": "string"
+                    },
+                    "actions": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "mails": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "trigger",
+                    "to",
+                    "content"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_]+$"
+                    },
+                    "trigger": {
+                        "type": "string"
+                    },
+                    "to": {
+                        "type": "string"
+                    },
+                    "content": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "data": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "name",
+                    "fields",
+                    "retention"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "fields": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "retention": {
+                        "type": "string"
+                    },
+                    "personal_data": {
+                        "type": "boolean"
+                    }
+                }
+            }
+        },
+        "external_services": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "name",
+                    "purpose",
+                    "credentials",
+                    "when_down"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "purpose": {
+                        "type": "string"
+                    },
+                    "credentials": {
+                        "type": "string"
+                    },
+                    "when_down": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "edge_cases": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "minItems": 1
+        },
+        "multistore": {
+            "type": "string",
+            "minLength": 10
+        },
+        "compatibility": {
+            "type": "string",
+            "minLength": 5
+        },
+        "acceptance": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "given",
+                    "when",
+                    "then"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "pattern": "^A\\d+$"
+                    },
+                    "need": {
+                        "type": "string"
+                    },
+                    "given": {
+                        "type": "string"
+                    },
+                    "when": {
+                        "type": "string"
+                    },
+                    "then": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "marketing": {
+            "type": "object",
+            "required": [
+                "category",
+                "audience",
+                "benefits"
+            ],
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "audience": {
+                    "type": "string"
+                },
+                "benefits": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "price_reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "logo": {
+            "type": "object",
+            "required": [
+                "concept"
+            ],
+            "properties": {
+                "concept": {
+                    "type": "string"
+                },
+                "avoid": {
+                    "type": "string"
+                }
+            }
+        },
+        "publish": {
+            "type": "object",
+            "required": [
+                "addons",
+                "docs",
+                "demo",
+                "sales_shop"
+            ],
+            "properties": {
+                "addons": {
+                    "type": "boolean"
+                },
+                "docs": {
+                    "type": "boolean"
+                },
+                "demo": {
+                    "type": "boolean"
+                },
+                "sales_shop": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "out_of_scope": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "change": {
+            "type": "object",
+            "required": [
+                "request",
+                "affected",
+                "version"
+            ],
+            "properties": {
+                "request": {
+                    "type": "string"
+                },
+                "affected": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "version": {
+                    "enum": [
+                        "patch",
+                        "minor",
+                        "major"
+                    ]
+                }
+            }
+        }
+    }
+}

@@ -39,13 +39,10 @@ if (!function_exists('dod_status')) {
 }
 
 /** The stages of the pipeline, in order (the same as build-rules-core Stages::ORDER). */
-const FACTORY_STAGES = ['intake', 'research', 'design', 'build', 'verify', 'content', 'release', 'retro'];
+const FACTORY_STAGES = ['intake', 'research', 'design', 'build', 'content', 'verify', 'release', 'retro'];
 
 /** The folder of the factory files in a module repository. */
 const FACTORY_DIR = '.factory';
-
-/** The fields every spec.json needs (the intake interview fills them; P3 extends the schema). */
-const FACTORY_SPEC_FIELDS = ['module_name', 'display_name', 'description', 'needs', 'settings', 'acceptance'];
 
 /** The fields every design.json needs. */
 const FACTORY_DESIGN_FIELDS = ['contexts', 'commands', 'queries', 'hooks', 'configuration', 'tables', 'covers'];
@@ -201,6 +198,92 @@ function factory_required_fields(array $data, array $fields, string $file): arra
 }
 
 /**
+ * The JSON schema of a factory document shipped with build-tools (resources/factory/<name>.schema.json).
+ *
+ * @return array<string, mixed>
+ *
+ * @throws RuntimeException when it is missing or broken
+ */
+function factory_schema(string $name): array
+{
+    $file = dirname(__DIR__) . "/resources/factory/$name.schema.json";
+    $schema = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+    if (!is_array($schema)) {
+        throw new RuntimeException("The schema $file is missing or broken.");
+    }
+
+    return $schema;
+}
+
+/**
+ * Problems of $value against a JSON schema (the subset the factory schemas use: type, required, properties, items,
+ * enum, pattern, minLength, maxLength, minItems, minimum).
+ *
+ * @param array<string, mixed> $schema
+ *
+ * @return list<string>
+ */
+function factory_schema_problems(mixed $value, array $schema, string $path): array
+{
+    $problems = [];
+    if (isset($schema['type'])) {
+        $types = (array) $schema['type'];
+        $actual = match (true) {
+            is_array($value) && ($value === [] || array_is_list($value)) => 'array',
+            is_array($value) => 'object',
+            is_string($value) => 'string',
+            is_bool($value) => 'boolean',
+            is_int($value) || is_float($value) => 'number',
+            default => 'null',
+        };
+        $fits = in_array($actual, $types, true) || ($actual === 'array' && $value === [] && in_array('object', $types, true));
+        if (!$fits) {
+            return ["$path must be " . implode(' or ', $types) . ", not $actual."];
+        }
+    }
+    if (isset($schema['enum']) && !in_array($value, (array) $schema['enum'], true)) {
+        $problems[] = "$path must be one of " . implode(', ', array_map(static fn (mixed $v): string => (string) json_encode($v), (array) $schema['enum'])) . '.';
+    }
+    if (is_string($value)) {
+        if (isset($schema['minLength']) && mb_strlen(trim($value, " \n\r\t\v\0")) < $schema['minLength']) {
+            $problems[] = "$path is too short (at least {$schema['minLength']} characters).";
+        }
+        if (isset($schema['maxLength']) && mb_strlen($value) > $schema['maxLength']) {
+            $problems[] = "$path is too long (at most {$schema['maxLength']} characters).";
+        }
+        if (isset($schema['pattern']) && preg_match('/' . str_replace('/', '\/', (string) $schema['pattern']) . '/u', $value) !== 1) {
+            $problems[] = "$path does not match {$schema['pattern']}.";
+        }
+    }
+    if ((is_int($value) || is_float($value)) && isset($schema['minimum']) && $value < $schema['minimum']) {
+        $problems[] = "$path must be at least {$schema['minimum']}.";
+    }
+    if (is_array($value) && ($value === [] || array_is_list($value)) && in_array('array', (array) ($schema['type'] ?? []), true)) {
+        if (isset($schema['minItems']) && count($value) < $schema['minItems']) {
+            $problems[] = "$path needs at least {$schema['minItems']} item(s).";
+        }
+        foreach ($value as $i => $item) {
+            if (isset($schema['items']) && is_array($schema['items'])) {
+                array_push($problems, ...factory_schema_problems($item, $schema['items'], "{$path}[$i]"));
+            }
+        }
+    } elseif (is_array($value)) {
+        foreach ((array) ($schema['required'] ?? []) as $field) {
+            if (!array_key_exists($field, $value)) {
+                $problems[] = "$path.$field is missing.";
+            }
+        }
+        foreach ((array) ($schema['properties'] ?? []) as $field => $sub) {
+            if (array_key_exists($field, $value) && is_array($sub)) {
+                array_push($problems, ...factory_schema_problems($value[$field], $sub, "$path.$field"));
+            }
+        }
+    }
+
+    return $problems;
+}
+
+/**
  * The IDs of the needs in the spec (needs: [{id, text}, ...]).
  *
  * @param array<string, mixed> $spec
@@ -232,15 +315,26 @@ function factory_stage_problems(string $repoDir, string $stage): array
             if ($spec === null) {
                 return ['.factory/spec.json is missing or no JSON object: run the intake interview first.'];
             }
-            $problems = factory_required_fields($spec, FACTORY_SPEC_FIELDS, 'spec.json');
-            foreach ((array) ($spec['needs'] ?? []) as $i => $need) {
-                if (!is_array($need) || !is_string($need['id'] ?? null) || !is_string($need['text'] ?? null) || trim($need['text'], " \n\r\t\v\0") === '') {
-                    $problems[] = "spec.json: need $i needs an id and a text.";
-                }
-            }
+            // The schema (resources/factory/spec.schema.json) says what the run needs to go on without asking again;
+            // placeholders (TODO, TBD, ?) mean a question was not answered.
+            $problems = array_merge(
+                factory_schema_problems($spec, factory_schema('spec'), 'spec.json'),
+                factory_required_fields($spec, [], 'spec.json'),
+            );
             $ids = factory_need_ids($spec);
             if (count(array_unique($ids)) !== count($ids)) {
                 $problems[] = 'spec.json: a need id is used twice.';
+            }
+            $needsWithAcceptance = [];
+            foreach (is_array($spec['acceptance'] ?? null) ? $spec['acceptance'] : [] as $case) {
+                if (is_array($case) && is_string($case['need'] ?? null)) {
+                    $needsWithAcceptance[$case['need']] = true;
+                }
+            }
+            foreach ($ids as $id) {
+                if (!isset($needsWithAcceptance[$id])) {
+                    $problems[] = "spec.json: need $id has no acceptance scenario (acceptance[].need = \"$id\").";
+                }
             }
             $approval = factory_json($repoDir, 'approval.json');
             if ($approval === null) {

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0] - 2026-11-18
+
+### Nieuw
+- `resources/factory/spec.schema.json`: het schema van `.factory/spec.json` (naam, bereik, needs, instellingen met
+  scope, schermen, mails, data, externe diensten, randgevallen, multistore, compatibiliteit, acceptatiescenario's,
+  marketing, logo, publiceren, buiten scope, en bij een wijziging `change`). De intake-gate controleert het
+  (`factory_schema_problems()`), plus een acceptatiescenario per need.
+
+### Gewijzigd
+- Volgorde van de stages: content komt vóór verify (de definition of done bouwt de docs, dus de teksten moeten er
+  eerst zijn).
+
 ## [1.1.0] - 2026-11-18
 
 ### Nieuw
