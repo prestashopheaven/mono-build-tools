@@ -74,7 +74,7 @@ if (is_dir($target)) {
         fwrite(STDERR, "Building the zip failed:\n" . implode("\n", $output) . "\n");
         exit(2);
     }
-    $zip = trim((string) end($output));
+    $zip = trim((string) end($output), " \n\r\t\v\0");
     $moduleDir = $target;
 } else {
     $zip = $target;
@@ -348,8 +348,8 @@ function flatten(array $items): array
             }
             continue;
         }
-        if (is_string($item) && trim($item) !== '') {
-            $out[] = ['message' => is_string($key) ? "$key: " . trim($item) : trim($item)];
+        if (is_string($item) && trim($item, " \n\r\t\v\0") !== '') {
+            $out[] = ['message' => is_string($key) ? "$key: " . trim($item, " \n\r\t\v\0") : trim($item, " \n\r\t\v\0")];
         } elseif (is_array($item)) {
             if (isset($item['message']) && is_string($item['message'])) {
                 $out[] = $item;

@@ -59,7 +59,7 @@ function docs_md_blocks(array $lines, callable $images, array &$headings, array 
     $i = 0;
     while ($i < $count) {
         $line = $lines[$i];
-        if (trim($line) === '') {
+        if (trim($line, " \n\r\t\v\0") === '') {
             ++$i;
             continue;
         }
@@ -77,7 +77,7 @@ function docs_md_blocks(array $lines, callable $images, array &$headings, array 
         // Heading.
         if (preg_match('/^(#{1,6})\s+(.+?)\s*#*\s*$/', $line, $m)) {
             $level = strlen($m[1]);
-            $text = trim($m[2]);
+            $text = trim($m[2], " \n\r\t\v\0");
             $id = docs_md_slug($text, $usedIds);
             if ($level >= 2 && $level <= 4 && $depth === 0) {
                 $headings[] = ['level' => $level, 'text' => docs_md_plain($text), 'id' => $id];
@@ -96,18 +96,18 @@ function docs_md_blocks(array $lines, callable $images, array &$headings, array 
         if (str_contains($line, '|') && isset($lines[$i + 1]) && str_contains($lines[$i + 1], '|') && preg_match('/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/', $lines[$i + 1])) {
             $rows = [];
             $align = array_map(static function (string $c): string {
-                $c = trim($c);
+                $c = trim($c, " \n\r\t\v\0");
 
                 return str_starts_with($c, ':') && str_ends_with($c, ':') ? 'center' : (str_ends_with($c, ':') ? 'end' : '');
             }, docs_md_cells($lines[$i + 1]));
             $header = docs_md_cells($line);
-            for ($i += 2; $i < $count && trim($lines[$i]) !== '' && str_contains($lines[$i], '|'); ++$i) {
+            for ($i += 2; $i < $count && trim($lines[$i], " \n\r\t\v\0") !== '' && str_contains($lines[$i], '|'); ++$i) {
                 $rows[] = docs_md_cells($lines[$i]);
             }
             $cell = static function (string $tag, string $text, int $n) use ($align, $images): string {
                 $style = ($align[$n] ?? '') !== '' ? ' style="text-align:' . $align[$n] . '"' : '';
 
-                return "<$tag$style>" . docs_md_inline(trim($text), $images) . "</$tag>";
+                return "<$tag$style>" . docs_md_inline(trim($text, " \n\r\t\v\0"), $images) . "</$tag>";
             };
             $html .= "<table>\n<thead><tr>";
             foreach ($header as $n => $text) {
@@ -130,9 +130,9 @@ function docs_md_blocks(array $lines, callable $images, array &$headings, array 
             for (; $i < $count && preg_match('/^\s*>\s?(.*)$/', $lines[$i], $m); ++$i) {
                 $quote[] = $m[1];
             }
-            if (preg_match('/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i', trim($quote[0] ?? ''), $m)) {
+            if (preg_match('/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i', trim($quote[0] ?? '', " \n\r\t\v\0"), $m)) {
                 $type = strtolower($m[1]);
-                $title = trim($m[2]);
+                $title = trim($m[2], " \n\r\t\v\0");
                 array_shift($quote);
                 $inner = docs_md_blocks($quote, $images, $headings, $usedIds, $depth + 1);
                 $titleHtml = $title !== '' ? '<span class="callout-title">' . docs_md_inline($title, $images) . '</span>' : '';
@@ -156,7 +156,7 @@ function docs_md_blocks(array $lines, callable $images, array &$headings, array 
         }
         // Paragraph.
         $para = [];
-        for (; $i < $count && trim($lines[$i]) !== '' && !docs_md_starts_block($lines[$i], $lines[$i + 1] ?? ''); ++$i) {
+        for (; $i < $count && trim($lines[$i], " \n\r\t\v\0") !== '' && !docs_md_starts_block($lines[$i], $lines[$i + 1] ?? ''); ++$i) {
             $para[] = $lines[$i];
         }
         if ($para === []) {
@@ -190,8 +190,8 @@ function docs_md_paragraph(array $lines, callable $images): string
 {
     $parts = [];
     foreach ($lines as $n => $line) {
-        $break = $n < count($lines) - 1 && (str_ends_with($line, '  ') || str_ends_with(rtrim($line), '\\'));
-        $text = trim($line);
+        $break = $n < count($lines) - 1 && (str_ends_with($line, '  ') || str_ends_with(rtrim($line, " \n\r\t\v\0"), '\\'));
+        $text = trim($line, " \n\r\t\v\0");
         if ($break && str_ends_with($text, '\\')) {
             $text = substr($text, 0, -1);
         }
@@ -229,28 +229,28 @@ function docs_md_list(array $lines, int $start, callable $images, array &$headin
         $item = [$m[3]];
         for (++$i; $i < $count; ++$i) {
             $line = $lines[$i];
-            if (trim($line) === '') {
+            if (trim($line, " \n\r\t\v\0") === '') {
                 // A blank line continues the item only when indented content follows.
                 $next = $lines[$i + 1] ?? '';
-                if (trim($next) !== '' && strlen($next) - strlen(ltrim($next)) > $indent) {
+                if (trim($next, " \n\r\t\v\0") !== '' && strlen($next) - strlen(ltrim($next, " \n\r\t\v\0")) > $indent) {
                     $item[] = '';
                     $loose = true;
                     continue;
                 }
                 break;
             }
-            $lineIndent = strlen($line) - strlen(ltrim($line));
+            $lineIndent = strlen($line) - strlen(ltrim($line, " \n\r\t\v\0"));
             if ($lineIndent <= $indent && preg_match('/^(\s*)([-*+]|\d{1,3}[.)])\s+/', $line)) {
                 break;
             }
             if ($lineIndent <= $indent && docs_md_starts_block($line, $lines[$i + 1] ?? '')) {
                 break;
             }
-            $item[] = $lineIndent >= $contentIndent ? substr($line, $contentIndent) : ltrim($line);
+            $item[] = $lineIndent >= $contentIndent ? substr($line, $contentIndent) : ltrim($line, " \n\r\t\v\0");
         }
         $items[] = $item;
         // Blank line between items: skip it when the list continues.
-        if ($i < $count && trim($lines[$i]) === '' && isset($lines[$i + 1]) && preg_match('/^(\s*)([-*+]|\d{1,3}[.)])\s+/', $lines[$i + 1], $n) && strlen($n[1]) === $indent) {
+        if ($i < $count && trim($lines[$i], " \n\r\t\v\0") === '' && isset($lines[$i + 1]) && preg_match('/^(\s*)([-*+]|\d{1,3}[.)])\s+/', $lines[$i + 1], $n) && strlen($n[1]) === $indent) {
             ++$i;
         }
     }
@@ -263,7 +263,7 @@ function docs_md_list(array $lines, int $start, callable $images, array &$headin
             // Tight list: the first paragraph is not wrapped in <p>.
             $inner = (string) preg_replace('#^<p>(.*?)</p>\n#s', '$1', $inner, 1);
         }
-        $html .= '<li>' . rtrim($inner) . "</li>\n";
+        $html .= '<li>' . rtrim($inner, " \n\r\t\v\0") . "</li>\n";
     }
 
     return [$html . "</$tag>\n", $i];
@@ -276,7 +276,7 @@ function docs_md_list(array $lines, int $start, callable $images, array &$headin
  */
 function docs_md_cells(string $row): array
 {
-    $row = trim($row);
+    $row = trim($row, " \n\r\t\v\0");
     $row = (string) preg_replace('/^\||\|$/', '', $row);
     $cells = preg_split('/(?<!\\\\)\|/', $row) ?: [];
 
@@ -294,8 +294,8 @@ function docs_md_figure(string $alt, string $src, callable $images): string
     if ($image === null) {
         return '<p class="note-missing">[missing image: ' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . "]</p>\n";
     }
-    $class = trim('figure ' . ($image['class'] ?? ''));
-    $caption = trim($alt) !== '' && ($image['caption'] ?? true) !== false ? '<figcaption>' . docs_md_inline($alt, $images) . '</figcaption>' : '';
+    $class = trim('figure ' . ($image['class'] ?? ''), " \n\r\t\v\0");
+    $caption = trim($alt, " \n\r\t\v\0") !== '' && ($image['caption'] ?? true) !== false ? '<figcaption>' . docs_md_inline($alt, $images) . '</figcaption>' : '';
 
     return '<figure class="' . docs_md_attr($class) . '"><img src="' . docs_md_attr($image['src']) . '" alt="' . docs_md_attr(docs_md_plain($alt)) . "\">$caption</figure>\n";
 }
@@ -364,7 +364,7 @@ function docs_md_plain(string $text): string
     $text = (string) preg_replace('/!?\[([^\]]*)\]\([^)]*\)/', '$1', $text);
     $text = (string) preg_replace('/<\/?kbd>/', '', $text);
 
-    return trim(str_replace(['**', '__', '`', '~~'], '', $text));
+    return trim(str_replace(['**', '__', '`', '~~'], '', $text), " \n\r\t\v\0");
 }
 
 /**

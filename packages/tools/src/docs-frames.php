@@ -102,7 +102,7 @@ function docs_frame_references(string $text, bool $css): array
     preg_match_all($pattern, $text, $matches, PREG_SET_ORDER);
     $refs = [];
     foreach ($matches as $m) {
-        $ref = trim($m[2]);
+        $ref = trim($m[2], " \n\r\t\v\0");
         if (!preg_match('~^(data:|[a-z][a-z0-9+.-]*:|//|/|#|\{\{)~i', $ref) && $ref !== '') {
             $refs[] = [$m[0], $ref];
         }
@@ -211,8 +211,8 @@ function docs_frame_create_template(array $ctx): array
     $style = docs_frame_style_for((string) $ctx['module']);
     ps_vlog('frame template: ' . (is_file("$dir/frame.html") && is_file("$dir/frame.css") ? "$dir exists, kept" : 'built-in template, starting style "' . $style['style'] . '"' . ($master !== null ? " (master frame $master not used: docs/frame/ is partly there)" : ' (no branding/frame/ found)')));
     foreach (array_keys($style) as $key) {
-        if (is_string($old[$key] ?? null) && trim($old[$key]) !== '' && !preg_match('/[<>{};]|url\s*\(/i', $old[$key])) {
-            $style[$key] = trim($old[$key]);
+        if (is_string($old[$key] ?? null) && trim($old[$key], " \n\r\t\v\0") !== '' && !preg_match('/[<>{};]|url\s*\(/i', $old[$key])) {
+            $style[$key] = trim($old[$key], " \n\r\t\v\0");
         }
     }
     if (!is_dir($dir)) {
@@ -236,8 +236,8 @@ function docs_frame_create_template(array $ctx): array
         if (is_int($old['radius'] ?? null)) {
             $css = str_replace('--radius: 28px;', '--radius: ' . $old['radius'] . 'px;', $css);
         }
-        if (is_string($old['font'] ?? null) && trim($old['font']) !== '' && !preg_match('/[<>{};"]/', $old['font'])) {
-            $css = str_replace('--font: var(--lang-fonts);', '--font: "' . trim($old['font']) . '", var(--lang-fonts);', $css);
+        if (is_string($old['font'] ?? null) && trim($old['font'], " \n\r\t\v\0") !== '' && !preg_match('/[<>{};"]/', $old['font'])) {
+            $css = str_replace('--font: var(--lang-fonts);', '--font: "' . trim($old['font'], " \n\r\t\v\0") . '", var(--lang-fonts);', $css);
         }
         $legacy = $ctx['docs'] . '/content/frame.css';
         if (is_file($legacy)) {
@@ -459,8 +459,8 @@ function docs_validate_captions(array $ctx, string $iso, ?array $source, callabl
             $add('error', $iso, $file, "no caption for screenshot '$id' (add {\"$id\": {\"title\": \"..\", \"text\": \"..\"}})");
             continue;
         }
-        $title = trim((string) ($caption['title'] ?? ''));
-        $text = trim((string) ($caption['text'] ?? ''));
+        $title = trim((string) ($caption['title'] ?? ''), " \n\r\t\v\0");
+        $text = trim((string) ($caption['text'] ?? ''), " \n\r\t\v\0");
         foreach (['title' => [$title, DOCS_CAPTION_TITLE], 'text' => [$text, DOCS_CAPTION_TEXT]] as $key => [$value, [$min, $max]]) {
             $length = mb_strlen($value);
             if (preg_match(DOCS_TODO, $value)) {
@@ -633,9 +633,9 @@ function docs_caption(array $ctx, string $iso, array $shot): array
     $id = (string) ($shot['id'] ?? '');
     foreach (array_unique([$iso, $ctx['source']]) as $lang) {
         $caption = (docs_load_captions($ctx, $lang) ?? [])[$id] ?? null;
-        $title = is_array($caption) ? trim((string) ($caption['title'] ?? '')) : '';
+        $title = is_array($caption) ? trim((string) ($caption['title'] ?? ''), " \n\r\t\v\0") : '';
         if ($title !== '' && !preg_match(DOCS_TODO, $title)) {
-            $text = trim((string) ($caption['text'] ?? ''));
+            $text = trim((string) ($caption['text'] ?? ''), " \n\r\t\v\0");
 
             return ['title' => docs_fill($ctx, $title), 'text' => preg_match(DOCS_TODO, $text) ? '' : docs_fill($ctx, $text), 'fallback' => $lang === $iso ? '' : $lang];
         }
@@ -974,7 +974,7 @@ function docs_frames_chrome(array $todo, array $frame): array
         ], 120);
         docs_remove_dir($profile);
         $ok = docs_frame_size_ok($item['out'], $frame);
-        $states[$key] = ['ok' => $ok, 'error' => $ok ? '' : (is_file($item['out']) ? 'the image has the wrong size' : 'exit code ' . $code . ': ' . substr(trim($output), 0, 200))];
+        $states[$key] = ['ok' => $ok, 'error' => $ok ? '' : (is_file($item['out']) ? 'the image has the wrong size' : 'exit code ' . $code . ': ' . substr(trim($output, " \n\r\t\v\0"), 0, 200))];
     }
 
     return $states;

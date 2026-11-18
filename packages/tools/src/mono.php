@@ -292,13 +292,13 @@ function validate(string $root): array
         if (($meta['kind'] ?? null) !== $kind) {
             $problems[] = "$where: extra.prestashopheaven.kind must be $kind.";
         }
-        if (trim((string) ($meta['use-when'] ?? '')) === '') {
+        if (trim((string) ($meta['use-when'] ?? ''), " \n\r\t\v\0") === '') {
             $problems[] = "$where: extra.prestashopheaven.use-when is empty (input for the package index, PKG-13).";
         }
         if (!is_array($meta['keywords'] ?? null) || $meta['keywords'] === []) {
             $problems[] = "$where: extra.prestashopheaven.keywords is empty (input for the package index, PKG-13).";
         }
-        if (isset($meta['coverage-min']) && trim((string) ($meta['coverage-reason'] ?? '')) === '') {
+        if (isset($meta['coverage-min']) && trim((string) ($meta['coverage-reason'] ?? ''), " \n\r\t\v\0") === '') {
             $problems[] = "$where: extra.prestashopheaven.coverage-min lowers the coverage gate (PKG-08) and needs a coverage-reason.";
         }
         // Classes that need PrestaShop are left out of the unit coverage only with an integration test of their own,
@@ -311,7 +311,7 @@ function validate(string $root): array
                 $problems[] = "$where: $file is integration-tested but has no tests/Integration/" . substr($file, 4, -4) . 'Test.php.';
             }
         }
-        if (trim((string) ($p['description'] ?? '')) === '') {
+        if (trim((string) ($p['description'] ?? ''), " \n\r\t\v\0") === '') {
             $problems[] = "$where: description is empty.";
         }
         foreach (['README.md', 'CHANGELOG.md', 'LICENSE.md', '.gitattributes'] as $file) {
@@ -473,7 +473,7 @@ function template(string $name, array $values): string
  */
 function newMonorepo(string $libraries, string $kind, string $category, string $description): string
 {
-    if (!in_array($kind, ['runtime', 'build'], true) || !preg_match('/^[a-z][a-z0-9-]*$/', $category) || trim($description) === '') {
+    if (!in_array($kind, ['runtime', 'build'], true) || !preg_match('/^[a-z][a-z0-9-]*$/', $category) || trim($description, " \n\r\t\v\0") === '') {
         throw new \InvalidArgumentException('Usage: ps-module mono new <runtime|build> <category> "<description>" (category: lowercase letters, digits, dashes).');
     }
     $dir = "$libraries/mono-$kind-$category";
@@ -511,7 +511,7 @@ function newMonorepo(string $libraries, string $kind, string $category, string $
  */
 function newPackage(string $root, string $dir, string $description, string $useWhen, array $keywords): string
 {
-    if (!preg_match('/^[a-z][a-z0-9-]*$/', $dir) || trim($description) === '' || trim($useWhen) === '' || $keywords === []) {
+    if (!preg_match('/^[a-z][a-z0-9-]*$/', $dir) || trim($description, " \n\r\t\v\0") === '' || trim($useWhen, " \n\r\t\v\0") === '' || $keywords === []) {
         throw new \InvalidArgumentException('Usage: ps-module mono package <dir> "<description>" "<use when>" <keyword,keyword,...>');
     }
     $kind = kind($root);
@@ -817,9 +817,9 @@ function removeTree(string $dir): void
  */
 function isGuardExit(array $source, int $number): bool
 {
-    $line = trim($source[$number - 1] ?? '');
+    $line = trim($source[$number - 1] ?? '', " \n\r\t\v\0");
     if (str_contains($line, "defined('_PS_VERSION_')")) {
-        return trim($source[$number] ?? '') === 'exit;';
+        return trim($source[$number] ?? '', " \n\r\t\v\0") === 'exit;';
     }
     if ($line !== 'exit;') {
         return false;
@@ -971,7 +971,7 @@ function hasPackagistHook(string $hooksJson): bool
  */
 function repoDescription(string $text, string $suffix = ''): string
 {
-    $text = trim((string) preg_replace('/\s+/', ' ', str_replace('%', 'percent', $text)));
+    $text = trim((string) preg_replace('/\s+/', ' ', str_replace('%', 'percent', $text)), " \n\r\t\v\0");
     $text = (string) preg_replace('/(\d) ?percent/', '$1 percent', $text);
     $room = 350 - mb_strlen($suffix);
     if (mb_strlen($text) > $room) {

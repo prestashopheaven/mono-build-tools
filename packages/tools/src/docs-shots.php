@@ -88,7 +88,7 @@ function docs_exec(array $command, int $timeout, ?string $cwd = null, bool $stre
  */
 function docs_voutput(string $output): void
 {
-    $output = trim($output);
+    $output = trim($output, " \n\r\t\v\0");
     if (!ps_verbose() || $output === '') {
         return;
     }
@@ -150,12 +150,12 @@ function docs_docker_available(): string
         [$code, $output] = docs_exec(['docker', 'info', '--format', '{{.ServerVersion}}'], 60);
         if ($code === 127) {
             $state = 'Docker is not installed';
-        } elseif ($code !== 0 || !preg_match('/^\d+\.\d+/', trim($output))) {
+        } elseif ($code !== 0 || !preg_match('/^\d+\.\d+/', trim($output, " \n\r\t\v\0"))) {
             $state = 'Docker is not running (start Docker Desktop)';
         } else {
             $state = '';
         }
-        ps_vlog('Docker: ' . ($state === '' ? 'running (server ' . trim($output) . ')' : $state));
+        ps_vlog('Docker: ' . ($state === '' ? 'running (server ' . trim($output, " \n\r\t\v\0") . ')' : $state));
     }
 
     return $state;
@@ -284,7 +284,7 @@ function docs_run_container(array $ctx, array $tasks, ?string $network): array
     if ($results === null) {
         ps_vlog('docs container job: no result.json (exit code ' . $code . ')');
 
-        return ['error' => 'the docs container failed (exit code ' . $code . '): ' . substr(trim($output), -600), 'results' => []];
+        return ['error' => 'the docs container failed (exit code ' . $code . '): ' . substr(trim($output, " \n\r\t\v\0"), -600), 'results' => []];
     }
 
     return ['error' => '', 'results' => $results];
@@ -337,7 +337,7 @@ function docs_shop_container(string $project): string
 {
     [$code, $output] = docs_exec(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.project=' . $project, '--filter', 'label=com.docker.compose.service=prestashop'], 60);
 
-    return $code === 0 ? trim(strtok(trim($output), "\n") ?: '') : '';
+    return $code === 0 ? trim(strtok(trim($output, " \n\r\t\v\0"), "\n") ?: '', " \n\r\t\v\0") : '';
 }
 
 /**
@@ -347,7 +347,7 @@ function docs_shop_network(string $container): string
 {
     [, $output] = docs_exec(['docker', 'inspect', '-f', '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}', $container], 60);
 
-    return trim(strtok(trim($output), ' ') ?: '');
+    return trim(strtok(trim($output, " \n\r\t\v\0"), ' ') ?: '', " \n\r\t\v\0");
 }
 
 /**
@@ -363,7 +363,7 @@ function docs_shop_probe(string $container, array $args): array
     $start = strpos($output, '{"ok"');
     $data = $start === false ? null : json_decode(substr($output, $start), true);
 
-    return is_array($data) ? $data : ['ok' => false, 'message' => substr(trim($output), -400)];
+    return is_array($data) ? $data : ['ok' => false, 'message' => substr(trim($output, " \n\r\t\v\0"), -400)];
 }
 
 /**
@@ -421,7 +421,7 @@ function docs_shots_config_hash(array $ctx): string
  */
 function docs_shop_setup_file(array $ctx): ?string
 {
-    $setup = trim((string) ($ctx['config']['shop']['setup'] ?? ''));
+    $setup = trim((string) ($ctx['config']['shop']['setup'] ?? ''), " \n\r\t\v\0");
     if ($setup === '') {
         return null;
     }

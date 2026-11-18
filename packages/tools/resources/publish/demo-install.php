@@ -163,7 +163,7 @@ if (!is_file("$staging/$module/$module.php")) {
 
 // Installed already? Ask PrestaShop in a separate process, so this script does not keep the old classes loaded.
 $check = 'require "config/config.inc.php"; echo Module::isInstalled(' . var_export($module, true) . ') ? "yes" : "no";';
-$installed = trim((string) shell_exec(escapeshellarg($php) . ' -r ' . escapeshellarg($check) . ' 2>/dev/null')) === 'yes';
+$installed = trim((string) shell_exec(escapeshellarg($php) . ' -r ' . escapeshellarg($check) . ' 2>/dev/null'), " \n\r\t\v\0") === 'yes';
 demo_vlog("$module is " . ($installed ? 'installed: upgrade' : 'not installed: install'));
 
 if (is_dir($target) && !rename($target, $backup)) {
@@ -195,6 +195,6 @@ demo_console($php, 'cache:clear --env=prod --no-warmup');
 // The version PrestaShop now has in ps_module (the installed one, not the one in the file).
 // $module is checked above ([a-z0-9] only), so it is safe inside the SQL string.
 $read = 'require "config/config.inc.php"; echo (string) Db::getInstance()->getValue("SELECT version FROM " . _DB_PREFIX_ . "module WHERE name = \'' . $module . '\'");';
-$version = trim((string) shell_exec(escapeshellarg($php) . ' -r ' . escapeshellarg($read) . ' 2>/dev/null'));
+$version = trim((string) shell_exec(escapeshellarg($php) . ' -r ' . escapeshellarg($read) . ' 2>/dev/null'), " \n\r\t\v\0");
 echo "DEMO-OK $version\n";
 exit(0);

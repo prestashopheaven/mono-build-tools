@@ -28,7 +28,7 @@ declare(strict_types=1);
 function shop_port(array $testing, string $version): int
 {
     $base = (int) ($testing['base_port'] ?? 8000);
-    $override = trim((string) getenv('PS_TEST_BASE_PORT'));
+    $override = trim((string) getenv('PS_TEST_BASE_PORT'), " \n\r\t\v\0");
     if ($override !== '') {
         if (!ctype_digit($override) || (int) $override < 1 || (int) $override > 64000) {
             throw new InvalidArgumentException("PS_TEST_BASE_PORT must be a port number from 1 to 64000, '$override' given.");

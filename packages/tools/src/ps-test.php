@@ -163,7 +163,7 @@ switch ($command) {
     default:
         $help = (string) file_get_contents(__FILE__);
         preg_match('#/\*(.*?)\*/#s', substr($help, strpos($help, '/*', 10)), $m);
-        out(trim(preg_replace('/^ \* ?/m', '', $m[1] ?? '')));
+        out(trim(preg_replace('/^ \* ?/m', '', $m[1] ?? ''), " \n\r\t\v\0"));
         exit($command === 'help' ? 0 : 1);
 }
 
@@ -238,9 +238,9 @@ final class Shop
      */
     public function portTakenBy(): string
     {
-        $names = trim(shellOutput('docker ps --filter ' . escapeshellarg('publish=' . $this->port) . ' --format "{{.Names}}"'));
+        $names = trim(shellOutput('docker ps --filter ' . escapeshellarg('publish=' . $this->port) . ' --format "{{.Names}}"'), " \n\r\t\v\0");
         if ($names === '') {
-            return httpStatus("http://localhost:{$this->port}/") > 0 && trim(shellOutput($this->composeCmd('ps -q'))) === ''
+            return httpStatus("http://localhost:{$this->port}/") > 0 && trim(shellOutput($this->composeCmd('ps -q')), " \n\r\t\v\0") === ''
                 ? 'a program outside Docker' : '';
         }
         foreach (preg_split('/\R/', $names) ?: [] as $name) {
@@ -365,7 +365,7 @@ final class Shop
             }
             foreach (['Fatal error', 'Parse error', 'Warning: ', 'Notice: ', 'Deprecated: ', 'Uncaught '] as $needle) {
                 if (str_contains($body, $needle)) {
-                    $problems[] = "$path contains '" . trim($needle) . "'";
+                    $problems[] = "$path contains '" . trim($needle, " \n\r\t\v\0") . "'";
                 }
             }
         }
@@ -440,7 +440,7 @@ final class Shop
             foreach (['Fatal error', 'Parse error', 'Warning: ', 'Notice: ', 'Uncaught ', 'Stack trace', 'Invalid token'] as $needle) {
                 if (stripos($body, $needle) !== false) {
                     $pos = (int) stripos($body, $needle);
-                    $problems[] = "$label contains '" . trim($needle) . "': " . substr(trim((string) preg_replace('/\s+/', ' ', strip_tags(substr($body, max(0, $pos - 100), 400)))), 0, 300);
+                    $problems[] = "$label contains '" . trim($needle, " \n\r\t\v\0") . "': " . substr(trim((string) preg_replace('/\s+/', ' ', strip_tags(substr($body, max(0, $pos - 100), 400))), " \n\r\t\v\0"), 0, 300);
                     break;
                 }
             }
@@ -519,7 +519,7 @@ final class Shop
             $cmd = $this->composeCmd('exec -T -u ' . $user . ' prestashop sh -c ' . escapeshellarg($shell));
             exec($cmd . ' 2>&1', $lines, $code);
 
-            return ['code' => $code, 'output' => trim(implode("\n", $lines))];
+            return ['code' => $code, 'output' => trim(implode("\n", $lines), " \n\r\t\v\0")];
         }
         $cmd = $this->composeCmd('exec -T -e PS_MODULE_VERBOSE=1 -u ' . $user . ' prestashop sh -c ' . escapeshellarg($shell));
         // STDERR to a file instead of 2>&1: then a verbose line can never end up in the middle of the output.
@@ -537,7 +537,7 @@ final class Shop
         }
         @unlink($errFile);
         ps_vdone('docker compose exec', $start, $code);
-        $output = trim(implode("\n", array_merge($lines, $other)));
+        $output = trim(implode("\n", array_merge($lines, $other)), " \n\r\t\v\0");
         if ($code !== 0 && $output !== '') {
             ps_vlog("output:\n" . vIndent(lastLines($output, 20)));
         }
@@ -593,7 +593,7 @@ function behatAutoloadOutdated(string $dir): bool
     }
     $record = "$dir/vendor/.ps-module-composer-json.sha1";
     if (is_file($record)) {
-        return trim((string) file_get_contents($record)) !== sha1_file("$dir/composer.json");
+        return trim((string) file_get_contents($record), " \n\r\t\v\0") !== sha1_file("$dir/composer.json");
     }
     $composer = json_decode((string) file_get_contents("$dir/composer.json"), true);
     $known = (string) file_get_contents($autoload);
@@ -766,7 +766,7 @@ function buildReleaseZip(string $moduleDir): ?string
         }
     }
     ps_vlog("build-zip.php output:\n" . vIndent(implode("\n", $plain)));
-    $zip = trim((string) end($plain));
+    $zip = trim((string) end($plain), " \n\r\t\v\0");
     ps_vlog('release zip: ' . ($code === 0 && is_file($zip) ? $zip : 'build FAILED'));
 
     return $code === 0 && is_file($zip) ? $zip : null;
@@ -847,8 +847,8 @@ function releaseTags(string $current): array
     }
     $tags = [];
     foreach ($lines as $tag) {
-        if (preg_match('/^v?(\d+\.\d+\.\d+)$/', trim($tag), $m) && version_compare($m[1], $current, '<')) {
-            $tags[trim($tag)] = $m[1];
+        if (preg_match('/^v?(\d+\.\d+\.\d+)$/', trim($tag, " \n\r\t\v\0"), $m) && version_compare($m[1], $current, '<')) {
+            $tags[trim($tag, " \n\r\t\v\0")] = $m[1];
         }
     }
     uasort($tags, 'version_compare');
@@ -1008,7 +1008,7 @@ function requireDocker(): void
     if (stripos($cli, 'Docker version') === false) {
         fail("Docker is not installed. These tests start PrestaShop shops in Docker.\nInstall Docker Desktop: https://www.docker.com/products/docker-desktop/");
     }
-    $server = trim(shellOutput('docker info --format "{{.ServerVersion}}" 2>&1'));
+    $server = trim(shellOutput('docker info --format "{{.ServerVersion}}" 2>&1'), " \n\r\t\v\0");
     if (!preg_match('/^\d+\.\d+/', $server)) {
         fail('Docker is installed but not running. Start Docker Desktop and try again.');
     }
@@ -1026,7 +1026,7 @@ function shellOutput(string $cmd): string
     ps_vcmd($cmd);
     $start = microtime(true);
     $output = (string) @shell_exec($cmd);
-    ps_vdone('-> ' . trim($output), $start);
+    ps_vdone('-> ' . trim($output, " \n\r\t\v\0"), $start);
 
     return $output;
 }
@@ -1070,7 +1070,7 @@ function vLabel(string $cmd): string
     preg_match('/^\s*(?:"([^"]+)"|\'([^\']+)\'|(\S+))(?:\s+([a-z][\w-]*))?/i', $cmd, $m);
     $program = basename(str_replace('\\', '/', ($m[1] ?? '') . ($m[2] ?? '') . ($m[3] ?? '')));
 
-    return trim($program . ' ' . ($m[4] ?? ''));
+    return trim($program . ' ' . ($m[4] ?? ''), " \n\r\t\v\0");
 }
 
 /**
@@ -1078,7 +1078,7 @@ function vLabel(string $cmd): string
  */
 function vIndent(string $text): string
 {
-    $text = trim($text);
+    $text = trim($text, " \n\r\t\v\0");
 
     return $text === '' ? '    (no output)' : '    | ' . str_replace("\n", "\n    | ", $text);
 }
@@ -1252,7 +1252,7 @@ function removeDir(string $dir): void
  */
 function lastLines(string $text, int $n): string
 {
-    return implode("\n", array_slice(explode("\n", trim($text)), -$n));
+    return implode("\n", array_slice(explode("\n", trim($text, " \n\r\t\v\0")), -$n));
 }
 
 /**

@@ -49,7 +49,7 @@ function readModuleKey(string $repoDir): string
     $spec = is_file("$repoDir/module.spec.json") ? json_decode((string) file_get_contents("$repoDir/module.spec.json"), true) : null;
     $key = is_array($spec) ? ($spec['module_key'] ?? '') : '';
 
-    return is_string($key) && preg_match('/^[a-f0-9]{32}$/i', trim($key)) === 1 ? strtolower(trim($key)) : '';
+    return is_string($key) && preg_match('/^[a-f0-9]{32}$/i', trim($key, " \n\r\t\v\0")) === 1 ? strtolower(trim($key, " \n\r\t\v\0")) : '';
 }
 
 /**

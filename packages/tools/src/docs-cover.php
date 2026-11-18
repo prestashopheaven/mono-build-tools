@@ -74,7 +74,7 @@ function docs_cover_box(array $ctx): ?array
 function docs_cover_settings(array $ctx, array $box, array $overrides = []): array
 {
     $cover = array_merge((array) ($box['defaults'] ?? []), (array) ($ctx['config']['cover'] ?? []), $overrides);
-    $name = trim((string) ($cover['name'] ?? ''));
+    $name = trim((string) ($cover['name'] ?? ''), " \n\r\t\v\0");
     if ($name === '') {
         $name = strtoupper((string) preg_replace('/^heaven/i', '', (string) $ctx['module']));
     }
@@ -329,7 +329,7 @@ function docs_render_cover(array $ctx, bool $force = false, array $overrides = [
     $html = docs_cover_html($box, $files, $s);
     $hash = sha1($html . sha1_file($path((string) $box['perspective'])) . ($logo !== '' ? sha1_file($logo) : '') . sha1_file($path((string) $box['font']['file'])) . ($files['stripes'] !== '' ? sha1_file("$stage/stripes.png") : ''));
     $manifest = $ctx['repo'] . '/.cache/docs/cover-' . sha1($out) . '.hash';
-    if (!$force && is_file($out) && is_file($manifest) && trim((string) file_get_contents($manifest)) === $hash) {
+    if (!$force && is_file($out) && is_file($manifest) && trim((string) file_get_contents($manifest), " \n\r\t\v\0") === $hash) {
         ps_vlog("cover: $out is up to date (same input hash), skipped");
 
         return ['file' => $out, 'skipped' => 'up to date', 'error' => ''];
@@ -371,7 +371,7 @@ function docs_cover_erase_bar(string $stage, array $box): bool
     $in = "$stage/perspective.png";
     $out = "$stage/perspective-fit.png";
     $key = sha1(sha1_file($in) . json_encode($box['side']));
-    if (is_file($out) && is_file("$out.key") && trim((string) file_get_contents("$out.key")) === $key) {
+    if (is_file($out) && is_file("$out.key") && trim((string) file_get_contents("$out.key"), " \n\r\t\v\0") === $key) {
         ps_vlog("cover: $out is cached (side bar already removed)");
 
         return true;

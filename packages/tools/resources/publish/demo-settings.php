@@ -180,7 +180,7 @@ if (!$introOnly) {
     // At the top: PrestaShop's own rules below end with [L] and would handle the login URL first.
     $rules = "# BEGIN heaven-demo-login (demo-settings.php: the demo login is always filled in)\n"
         . "<IfModule mod_rewrite.c>\nRewriteEngine on\nRewriteCond %{REQUEST_METHOD} =GET\nRewriteCond %{QUERY_STRING} !(^|&)email=\n"
-        . 'RewriteRule ^(index\.php/)?login$ ' . $base . '%{REQUEST_URI}?' . str_replace('%', '\%', $query) . " [QSA,NE,R=302,L]\n</IfModule>\n# END heaven-demo-login\n\n" . ltrim($rules);
+        . 'RewriteRule ^(index\.php/)?login$ ' . $base . '%{REQUEST_URI}?' . str_replace('%', '\%', $query) . " [QSA,NE,R=302,L]\n</IfModule>\n# END heaven-demo-login\n\n" . ltrim($rules, " \n\r\t\v\0");
     demo_write($htaccess, $rules);
     demo_vlog("login filled in: rule at the top of $adminDir/.htaccess (redirect to $base)");
 
@@ -193,9 +193,9 @@ if (!$introOnly) {
     if ($ssl) {
         $rootRules = "# BEGIN heaven-demo-https (demo-settings.php: the visitor's HTTPS as told by a proxy)\n"
             . "<IfModule mod_setenvif.c>\nSetEnvIf X-Forwarded-Proto \"^https$\" HTTPS=on\nSetEnvIf CF-Visitor \"\\\"scheme\\\":\\\"https\\\"\" HTTPS=on\n</IfModule>\n"
-            . "# END heaven-demo-https\n\n" . ltrim($rootRules);
+            . "# END heaven-demo-https\n\n" . ltrim($rootRules, " \n\r\t\v\0");
     }
-    demo_write($rootHtaccess, ltrim($rootRules));
+    demo_write($rootHtaccess, ltrim($rootRules, " \n\r\t\v\0"));
     demo_vlog($ssl ? 'HTTPS behind a proxy: rules at the top of .htaccess (X-Forwarded-Proto, CF-Visitor)' : 'SSL off: no HTTPS proxy rules in .htaccess');
 
     // 5. The brand: shop logo, back-office header logo, login page logo.
@@ -215,7 +215,7 @@ if (!$introOnly) {
             }
             demo_write(dirname($css) . '/heaven-demo-logo.svg', (string) file_get_contents($brandSvg));
             $text = (string) preg_replace('#\n?/\* BEGIN heaven-demo-logo \*/.*?/\* END heaven-demo-logo \*/\n?#s', '', (string) file_get_contents($css));
-            demo_write($css, rtrim($text) . "\n/* BEGIN heaven-demo-logo */#header_logo,.logo,.logo-container .logo{background-image:url(heaven-demo-logo.svg)!important;background-size:34px 34px!important;background-position:left center!important}/* END heaven-demo-logo */\n");
+            demo_write($css, rtrim($text, " \n\r\t\v\0") . "\n/* BEGIN heaven-demo-logo */#header_logo,.logo,.logo-container .logo{background-image:url(heaven-demo-logo.svg)!important;background-size:34px 34px!important;background-position:left center!important}/* END heaven-demo-logo */\n");
         }
         $brand[] = 'back-office logo';
     }

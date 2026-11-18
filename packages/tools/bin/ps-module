@@ -95,7 +95,7 @@ if (array_intersect($args, ['-v', '--verbose']) !== []) {
 }
 $command = array_shift($args) ?? 'help';
 $started = microtime(true);
-ps_vlog('ps-module ' . trim($command . ' ' . implode(' ', $args)) . '   (PHP ' . PHP_VERSION . ', ' . PHP_BINARY . ', in ' . getcwd() . ')');
+ps_vlog('ps-module ' . trim($command . ' ' . implode(' ', $args), " \n\r\t\v\0") . '   (PHP ' . PHP_VERSION . ', ' . PHP_BINARY . ', in ' . getcwd() . ')');
 register_shutdown_function(static fn () => ps_vdone("ps-module $command", $started));
 
 $moduleDir = findModuleDir((string) getcwd());
@@ -285,7 +285,7 @@ switch ($command) {
 
     case 'skip':
         requireRepo($repoDir);
-        [$step, $reason] = [$args[0] ?? '', trim($args[1] ?? '')];
+        [$step, $reason] = [$args[0] ?? '', trim($args[1] ?? '', " \n\r\t\v\0")];
         if ($step === '' || $reason === '') {
             fwrite(STDERR, "Usage: ps-module skip <step> \"<reason>\"\n");
             exit(2);
@@ -377,7 +377,7 @@ switch ($command) {
     default:
         $help = (string) file_get_contents(__FILE__);
         preg_match('#/\*\n(.*?)\*/#s', $help, $m);
-        echo trim(preg_replace('/^ \* ?/m', '', $m[1] ?? '')) . "\n";
+        echo trim(preg_replace('/^ \* ?/m', '', $m[1] ?? ''), " \n\r\t\v\0") . "\n";
         exit($command === 'help' ? 0 : 2);
 }
 

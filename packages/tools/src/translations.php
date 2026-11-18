@@ -259,7 +259,7 @@ function tr_extract(array $ctx): array
         }
         foreach ($found['entries'] as [$source, $domain, $line]) {
             $ref = "$relative:$line";
-            if (trim($source) === '') {
+            if (trim($source, " \n\r\t\v\0") === '') {
                 $problems[] = ['level' => 'error', 'ref' => $ref, 'message' => 'Empty text.'];
             } elseif (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', $source)) {
                 $problems[] = ['level' => 'error', 'ref' => $ref, 'message' => 'Text contains control characters (not allowed in XLF).'];
@@ -647,7 +647,7 @@ function tr_php_array_entries(array $items, array $tokens, string $adminDomain):
             }
         }
     }
-    if (isset($byKey['label']) && ($label = $literal('label')) !== null && trim($label) !== '') {
+    if (isset($byKey['label']) && ($label = $literal('label')) !== null && trim($label, " \n\r\t\v\0") !== '') {
         if ($literal('translation_domain') !== null) {
             $entries[] = [$label, (string) $literal('translation_domain'), $byKey['label']['line']];
         } elseif (!isset($byKey['translation_domain'])) {
@@ -1146,7 +1146,7 @@ function tr_analyse(array $ctx, array $extraction, array $catalogues): array
         foreach ($extraction['strings'] as $domain => $sources) {
             foreach (array_keys($sources) as $source) {
                 $entry = $catalogue['strings'][$domain][$source] ?? null;
-                if ($entry === null || trim($entry['text']) === '') {
+                if ($entry === null || trim($entry['text'], " \n\r\t\v\0") === '') {
                     $state['missing'][] = [$domain, (string) $source];
                     continue;
                 }
@@ -1266,7 +1266,7 @@ function tr_expected_files(array $ctx, array $extraction, array $catalogues): ar
                     continue;
                 }
                 $entry = $catalogues[$iso]['strings'][$domain][$source] ?? null;
-                if ($entry !== null && trim($entry['text']) !== '' && tr_placeholder_problem($source, $entry['text']) === null
+                if ($entry !== null && trim($entry['text'], " \n\r\t\v\0") !== '' && tr_placeholder_problem($source, $entry['text']) === null
                     && !preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', $entry['text'])) {
                     $units[$source] = [$entry['text'], $entry['machine']];
                 }
@@ -1666,7 +1666,7 @@ function tr_cmd_todo(array $ctx, array $args, array $options): int
             $values = [];
             foreach ($isos as $iso) {
                 $entry = $catalogues[$iso]['strings'][$domain][$source] ?? null;
-                if ($entry === null || trim($entry['text']) === '') {
+                if ($entry === null || trim($entry['text'], " \n\r\t\v\0") === '') {
                     $values[$iso] = '';
                 } elseif ($withMachine && $entry['machine'] !== null) {
                     $values[$iso] = $entry['text'];
@@ -1735,7 +1735,7 @@ function tr_cmd_apply(array $ctx, array $args, array $options): int
                 echo 'note: ' . tr_quote((string) $source) . " is not in the code (stored, but obsolete).\n";
             }
             foreach ($values as $iso => $text) {
-                if (str_starts_with((string) $iso, '_') || !is_string($text) || trim($text) === '') {
+                if (str_starts_with((string) $iso, '_') || !is_string($text) || trim($text, " \n\r\t\v\0") === '') {
                     continue;
                 }
                 if (!isset($catalogues[$iso])) {
@@ -2072,7 +2072,7 @@ function tr_help(string $command): int
 {
     $source = (string) file_get_contents(__FILE__);
     preg_match('#/\*\n(.*?)\*/#s', substr($source, (int) strpos($source, '/*', 10)), $m);
-    echo trim((string) preg_replace('/^ \* ?/m', '', $m[1] ?? '')) . "\n";
+    echo trim((string) preg_replace('/^ \* ?/m', '', $m[1] ?? ''), " \n\r\t\v\0") . "\n";
 
     return $command === 'help' ? 0 : 2;
 }
@@ -2091,8 +2091,8 @@ function tr_env(string $name, string $dir): string
         return $value;
     }
     for ($d = $dir; $d !== '' && $d !== dirname($d); $d = dirname($d)) {
-        if (is_file("$d/.env") && preg_match('/^\s*' . preg_quote($name, '/') . '\s*=\s*["\']?([^"\'\r\n]*)/m', (string) file_get_contents("$d/.env"), $m) && trim($m[1]) !== '') {
-            return trim($m[1]);
+        if (is_file("$d/.env") && preg_match('/^\s*' . preg_quote($name, '/') . '\s*=\s*["\']?([^"\'\r\n]*)/m', (string) file_get_contents("$d/.env"), $m) && trim($m[1], " \n\r\t\v\0") !== '') {
+            return trim($m[1], " \n\r\t\v\0");
         }
     }
 
@@ -2207,7 +2207,7 @@ function tr_deepl(string $key, array $texts, string $sourceLang, string $targetL
     ps_vdone("DeepL HTTP $status, " . strlen((string) $response) . ' bytes', $start);
     $data = json_decode((string) $response, true);
     if ($status !== 200 || !is_array($data) || !isset($data['translations'])) {
-        $message = is_array($data) && isset($data['message']) ? (string) $data['message'] : substr(trim((string) $response), 0, 200);
+        $message = is_array($data) && isset($data['message']) ? (string) $data['message'] : substr(trim((string) $response, " \n\r\t\v\0"), 0, 200);
         throw new RuntimeException("HTTP $status: $message" . ($status === 403 ? ' (check the key)' : '') . ($status === 456 ? ' (quota exceeded)' : ''));
     }
 

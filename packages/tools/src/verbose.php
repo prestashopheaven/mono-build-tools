@@ -26,8 +26,8 @@ function ps_verbose(): bool
 function ps_vsecret(?string $value = null): array
 {
     static $secrets = [];
-    if ($value !== null && strlen(trim($value)) >= 4) {
-        $secrets[trim($value)] = true;
+    if ($value !== null && strlen(trim($value, " \n\r\t\v\0")) >= 4) {
+        $secrets[trim($value, " \n\r\t\v\0")] = true;
     }
 
     return array_keys($secrets);
@@ -55,7 +55,7 @@ function ps_vlog(string $message): void
     if (!ps_verbose()) {
         return;
     }
-    foreach (preg_split('/\R/', rtrim(ps_vmask($message))) ?: [] as $line) {
+    foreach (preg_split('/\R/', rtrim(ps_vmask($message), " \n\r\t\v\0")) ?: [] as $line) {
         fwrite(STDERR, '[v ' . date('H:i:s') . '] ' . $line . "\n");
     }
 }

@@ -158,7 +158,7 @@ function publish_main(array $argv): int
         // Commands of other modules (other terminals, other Claude sessions) that use the same server wait here.
         $lock = publish_lock_name($command, $flags, $dryRun);
         if ($lock !== null) {
-            ps_lock($lock, trim("publish $command " . implode(' ', $args)) . ($ctx['module'] !== '' ? " ({$ctx['module']} {$ctx['version']})" : ''), $ctx['repo']);
+            ps_lock($lock, trim("publish $command " . implode(' ', $args), " \n\r\t\v\0") . ($ctx['module'] !== '' ? " ({$ctx['module']} {$ctx['version']})" : ''), $ctx['repo']);
         }
         switch ($command) {
             case 'status':
@@ -188,7 +188,7 @@ function publish_main(array $argv): int
             default:
                 $help = (string) file_get_contents(__FILE__);
                 preg_match('#/\*\n(.*?)\*/#s', substr($help, (int) strpos($help, '/*', 10)), $m);
-                echo trim((string) preg_replace('/^ \* ?/m', '', $m[1] ?? '')) . "\n";
+                echo trim((string) preg_replace('/^ \* ?/m', '', $m[1] ?? ''), " \n\r\t\v\0") . "\n";
 
                 return $command === 'help' ? 0 : 2;
         }
@@ -252,11 +252,11 @@ function publish_secrets(?string $value = null): array
 {
     static $values = [];
     // localhost and loopback addresses say nothing about a server: masking them would only hide useful output.
-    if ($value !== null && strlen($value) >= 3 && !in_array(strtolower(trim($value)), ['localhost', '127.0.0.1', '::1'], true)) {
+    if ($value !== null && strlen($value) >= 3 && !in_array(strtolower(trim($value, " \n\r\t\v\0")), ['localhost', '127.0.0.1', '::1'], true)) {
         $values[$value] = $value;
         foreach (preg_split('/\R/', $value) ?: [] as $line) {
-            if (strlen(trim($line)) >= 8) {
-                $values[trim($line)] = trim($line);
+            if (strlen(trim($line, " \n\r\t\v\0")) >= 8) {
+                $values[trim($line, " \n\r\t\v\0")] = trim($line, " \n\r\t\v\0");
             }
         }
     }
@@ -817,7 +817,7 @@ function publish_cmd_demo_site(array $ctx, array $args, bool $dryRun, array $fla
         $output = (string) $ssh->exec((ps_verbose() ? 'VERBOSE=1 ' : '') . 'DEMO_SITE_PHP=' . escapeshellarg(publish_env($ctx, 'DEMO_SITE_PHP') ?: 'php') . ' bash '
             . escapeshellarg("$tools/demo-server-check.sh") . ' ' . escapeshellarg(publish_env($ctx, 'DEMO_SITE_PS_ROOT'))
             . ' ' . escapeshellarg(rtrim(publish_env($ctx, 'DEMO_SITE_URL'), '/')) . ' 2>&1');
-        echo rtrim($output) . "\n";
+        echo rtrim($output, " \n\r\t\v\0") . "\n";
 
         return 0;
     }
@@ -966,7 +966,7 @@ function publish_demo_run(phpseclib3\Net\SFTP $ssh, string $tools, string $comma
     $output = (string) $ssh->exec((ps_verbose() ? 'VERBOSE=1 ' : '') . 'bash ' . escapeshellarg("$tools/demo-site.sh") . " $command 2>&1");
     $exit = $ssh->getExitStatus();
     if ($print) {
-        echo preg_replace('/^/m', '  ', rtrim($output)) . "\n";
+        echo preg_replace('/^/m', '  ', rtrim($output, " \n\r\t\v\0")) . "\n";
     }
 
     return [$output, is_int($exit) ? $exit : 1];
@@ -1037,7 +1037,7 @@ function publish_demo_push(array $ctx, string $local, bool $dryRun): int
     if (preg_match('/^SNAPSHOT_DIR=(.+)$/m', $paths, $m) !== 1) {
         throw new RuntimeException('demo-site.sh paths gave no SNAPSHOT_DIR.');
     }
-    $remote = rtrim(trim($m[1]), '/') . '/' . $name;
+    $remote = rtrim(trim($m[1], " \n\r\t\v\0"), '/') . '/' . $name;
     if (!$ssh->mkdir($remote, 0700, true) && !$ssh->is_dir($remote)) {
         throw new RuntimeException("cannot create $remote.");
     }
@@ -1139,7 +1139,7 @@ function publish_after_deploy(array $ctx, string $what): int
     if (publish_env($ctx, 'TRANSIP_LOGIN') === '') {
         return 0;
     }
-    $description = trim("$what {$ctx['module']} {$ctx['version']}") . ' ' . date('Y-m-d H:i');
+    $description = trim("$what {$ctx['module']} {$ctx['version']}", " \n\r\t\v\0") . ' ' . date('Y-m-d H:i');
 
     try {
         return publish_cmd_vps_snapshot($ctx, $description, false) ? 0 : 1;
@@ -1462,7 +1462,7 @@ function publish_release_guard(array $ctx, bool $force): void
     }
     $git = 'git -C ' . escapeshellarg($ctx['repo']) . ' tag -l ' . escapeshellarg('v' . $ctx['version']);
     ps_vcmd($git);
-    $tag = trim((string) shell_exec($git));
+    $tag = trim((string) shell_exec($git), " \n\r\t\v\0");
     ps_vlog('release tag v' . $ctx['version'] . ': ' . ($tag !== '' ? 'found' : 'missing'));
     if ($tag === '') {
         throw new RuntimeException("version {$ctx['version']} is not released (no tag v{$ctx['version']}). Publish after the release, or use --force.");
@@ -1542,7 +1542,7 @@ function publish_env_multiline(string $text, string $first, int $offset): string
     }
     $lines = [ltrim($first, "\"'")];
     foreach (preg_split('/\R/', substr($text, $offset)) ?: [] as $i => $line) {
-        $line = rtrim($line);
+        $line = rtrim($line, " \n\r\t\v\0");
         if ($line === '') {
             continue; // line breaks of the first line, \r\n counted twice; a key has no empty lines
         }
@@ -1551,12 +1551,12 @@ function publish_env_multiline(string $text, string $first, int $offset): string
             break;
         }
         $lines[] = $line;
-        if (!$openQuote && preg_match('/^-----END [A-Z0-9 ]+-----$/', trim($line)) === 1) {
+        if (!$openQuote && preg_match('/^-----END [A-Z0-9 ]+-----$/', trim($line, " \n\r\t\v\0")) === 1) {
             break;
         }
     }
 
-    return trim(implode("\n", $lines));
+    return trim(implode("\n", $lines), " \n\r\t\v\0");
 }
 
 /**
@@ -1585,7 +1585,7 @@ function publish_normalize_pem(string $text): string
  */
 function publish_key_problem(string $setting): string
 {
-    $setting = trim($setting);
+    $setting = trim($setting, " \n\r\t\v\0");
     if (!str_contains($setting, '-----')) {
         return preg_match('#[/\\\\]|\.(pem|key)$#i', $setting) === 1
             ? 'it looks like a file path, but there is no file there (' . (is_dir(dirname($setting)) ? 'the folder exists, the file does not' : 'the folder does not exist either') . ')'
@@ -1629,7 +1629,7 @@ function publish_env_file(?string $file = null): array
     static $values = [];
     if ($file !== null) {
         foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
-            if (preg_match('/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/', $line, $m) === 1 && !str_starts_with(ltrim($line), '#')) {
+            if (preg_match('/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/', $line, $m) === 1 && !str_starts_with(ltrim($line, " \n\r\t\v\0"), '#')) {
                 $values[$m[1]] = trim($m[2], "\"'");
             }
         }
@@ -1811,7 +1811,7 @@ function publish_demo_install_prestashop(array $ctx, string $version, bool $dryR
     $state = trim((string) $ssh->exec('if [ -f ' . $q("$root/install/index_cli.php") . ' ]; then echo unpacked; elif [ -f '
         . $q("$root/app/config/parameters.php") . ' ]; then echo installed; elif [ -d ' . $q($root)
         . ' ]; then find ' . $q($root) . ' -mindepth 1 -maxdepth 1 ! -name robots.txt ! -name index.html ! -name .well-known'
-        . ' ! -name .htaccess ! -name favicon.ico | wc -l; else echo 0; fi'));
+        . ' ! -name .htaccess ! -name favicon.ico | wc -l; else echo 0; fi'), " \n\r\t\v\0");
     if ($state === 'installed') {
         throw new RuntimeException('PrestaShop is already installed in DEMO_SITE_PS_ROOT (app/config/parameters.php exists). Next: ps-module demo-site setup');
     }
@@ -1840,7 +1840,7 @@ function publish_demo_install_prestashop(array $ctx, string $version, bool $dryR
         fclose($pipes[1]);
         fclose($pipes[2]);
         if (proc_close($process) !== 0 || !is_file($archive)) {
-            throw new RuntimeException('tar failed: ' . trim($tarError));
+            throw new RuntimeException('tar failed: ' . trim($tarError, " \n\r\t\v\0"));
         }
         printf("Uploading %.1f MB ...\n", filesize($archive) / 1048576);
         $remoteArchive = "$tools/prestashop-$version.tar.gz";
@@ -1853,7 +1853,7 @@ function publish_demo_install_prestashop(array $ctx, string $version, bool $dryR
             . ' -C ' . $q($root) . '; rm -f ' . $q($remoteArchive) . '; if [ -d ' . $q("$root/admin") . ' ] && [ ' . $q($admin) . ' != admin ]; then mv '
             . $q("$root/admin") . ' ' . $q("$root/$admin") . '; fi; echo unpacked 2>&1');
         if (!str_contains($output, 'unpacked')) {
-            throw new RuntimeException('unpacking failed: ' . trim($output));
+            throw new RuntimeException('unpacking failed: ' . trim($output, " \n\r\t\v\0"));
         }
     }
 
@@ -1894,7 +1894,7 @@ function publish_demo_install_prestashop(array $ctx, string $version, bool $dryR
     $exit = $ssh->getExitStatus();
     $ssh->delete($argsFile);
     $ssh->delete($runner);
-    echo preg_replace('/^/m', '  ', rtrim($output)) . "\n";
+    echo preg_replace('/^/m', '  ', rtrim($output, " \n\r\t\v\0")) . "\n";
     if ($exit !== 0 || !str_contains($output, 'Installation successful')) {
         throw new RuntimeException('the PrestaShop installer failed (see above). The files stay in DEMO_SITE_PS_ROOT; empty it before you try again.');
     }
@@ -1940,7 +1940,7 @@ function publish_db_credentials(array $ctx): array
     $found = ['host' => '', 'port' => '', 'name' => '', 'user' => '', 'password' => '', 'prefix' => ''];
     $unknown = 0;
     foreach (preg_split('/\R/', (string) file_get_contents($file)) ?: [] as $line) {
-        $line = trim($line);
+        $line = trim($line, " \n\r\t\v\0");
         if ($line === '' || $line[0] === '#' || str_starts_with($line, '//') || str_starts_with($line, '<?php')) {
             continue;
         }
@@ -1950,7 +1950,7 @@ function publish_db_credentials(array $ctx): array
             continue;
         }
         $key = strtolower((string) preg_replace('/[^A-Za-z0-9]/', '', $m[1]));
-        $value = trim($m[2]);
+        $value = trim($m[2], " \n\r\t\v\0");
         if (strlen($value) >= 2 && ($value[0] === '"' || $value[0] === "'") && substr($value, -1) === $value[0]) {
             $value = substr($value, 1, -1);
         }

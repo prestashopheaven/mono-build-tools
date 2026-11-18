@@ -271,9 +271,9 @@ function assets_build(string $devDir): int
 {
     $null = PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null';
     ps_vcmd("node -v 2>$null");
-    $node = trim((string) shell_exec("node -v 2>$null"));
+    $node = trim((string) shell_exec("node -v 2>$null"), " \n\r\t\v\0");
     ps_vcmd("npm -v 2>$null");
-    $npm = trim((string) shell_exec("npm -v 2>$null"));
+    $npm = trim((string) shell_exec("npm -v 2>$null"), " \n\r\t\v\0");
     ps_vlog('assets: node ' . ($node !== '' ? $node : 'not found') . ', npm ' . ($npm !== '' ? $npm : 'not found') . ' (needs Node ' . ASSETS_MIN_NODE . '+)');
     if ($node === '' || $npm === '') {
         fwrite(STDERR, 'ps-module assets: Node.js and npm are needed to build the TypeScript (Node ' . ASSETS_MIN_NODE . '+), but '

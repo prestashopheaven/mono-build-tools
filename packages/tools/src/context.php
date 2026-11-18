@@ -144,7 +144,7 @@ function context_notes_hash(string $content): string
 {
     $notes = (string) preg_replace('/' . preg_quote(CONTEXT_BEGIN, '/') . '.*?' . preg_quote(CONTEXT_END, '/') . '/s', '', $content);
 
-    return hash('sha256', (string) preg_replace('/\s+/', ' ', trim($notes)));
+    return hash('sha256', (string) preg_replace('/\s+/', ' ', trim($notes, " \n\r\t\v\0")));
 }
 
 /**
@@ -191,7 +191,7 @@ function context_write(string $repoDir): bool
             1
         );
     } else {
-        $new = rtrim($old) . "\n\n" . $block . "\n";
+        $new = rtrim($old, " \n\r\t\v\0") . "\n\n" . $block . "\n";
     }
     $new = str_replace("\r\n", "\n", $new);
     if ($new === str_replace("\r\n", "\n", $old)) {
@@ -467,7 +467,7 @@ function context_summary(string $doc): string
     $lines = preg_split('/\R/', $doc) ?: [];
     $text = '';
     foreach ($lines as $line) {
-        $line = trim((string) preg_replace('#^\s*/?\*+/?#', '', $line));
+        $line = trim((string) preg_replace('#^\s*/?\*+/?#', '', $line), " \n\r\t\v\0");
         if ($line === '' && $text !== '') {
             break;
         }
@@ -476,12 +476,12 @@ function context_summary(string $doc): string
         }
         $text .= ($text === '' ? '' : ' ') . $line;
     }
-    $text = trim($text);
+    $text = trim($text, " \n\r\t\v\0");
     if (preg_match('/^(.+?[.!?])(\s|$)/', $text, $m)) {
         $text = $m[1];
     }
 
-    return mb_strlen($text) > 140 ? rtrim(mb_substr($text, 0, 137)) . '...' : $text;
+    return mb_strlen($text) > 140 ? rtrim(mb_substr($text, 0, 137), " \n\r\t\v\0") . '...' : $text;
 }
 
 /**
@@ -512,7 +512,7 @@ function context_definition(string $moduleDir): array
         @unlink($probe);
         $data = json_decode($output, true);
         if (!is_array($data)) {
-            ps_vlog('context: probe gave no JSON (' . ($output !== '' ? substr(trim($output), 0, 300) : 'no output') . '): reading the constants as text');
+            ps_vlog('context: probe gave no JSON (' . ($output !== '' ? substr(trim($output, " \n\r\t\v\0"), 0, 300) : 'no output') . '): reading the constants as text');
         }
         if (is_array($data)) {
             return [
@@ -541,7 +541,7 @@ function context_definition(string $moduleDir): array
     preg_match_all("/(self::\\w+|'[^']+')\\s*=>\\s*([^,\\n]+)/", $block('CONFIGURATION'), $c, PREG_SET_ORDER);
     foreach ($c as $pair) {
         $key = $consts[$pair[1]] ?? trim($pair[1], "'");
-        $result['configuration'][$key] = trim($pair[2]);
+        $result['configuration'][$key] = trim($pair[2], " \n\r\t\v\0");
     }
     preg_match_all("/(self::\\w+|'[^']+')/", $block('GENERATED_CONFIGURATION'), $g);
     $result['generated'] = array_map(static fn (string $k): string => $consts[$k] ?? trim($k, "'"), $g[1]);
@@ -576,13 +576,13 @@ function context_section_identity(string $repoDir, string $moduleDir, string $na
     $rows = [
         'Module' => "`$name` (class `" . ucfirst($name) . '`, namespace `' . (string) ($spec['namespace'] ?? '?') . '`)',
         'Version' => $get('version') . ($tags !== [] ? ' (releases: ' . implode(', ', array_slice($tags, 0, 5)) . ')' : ' (no release tag yet)'),
-        'PrestaShop' => trim($min[1] ?? '?') . ' – ' . trim(trim($max[1] ?? '?'), "' "),
+        'PrestaShop' => trim($min[1] ?? '?', " \n\r\t\v\0") . ' – ' . trim(trim($max[1] ?? '?', " \n\r\t\v\0"), "' "),
         'PHP' => '>= ' . (string) ($spec['php_min'] ?? '?'),
         'Tab / distribution' => $get('tab') . ' / ' . (string) ($spec['distribution'] ?? '?'),
         'Multistore' => $multistore,
         'Languages' => $i18n !== [] ? implode(', ', $i18n) : '—',
         'Features (scaffold)' => ($spec['features'] ?? []) !== [] ? implode(', ', (array) $spec['features']) : '—',
-        'Main class traits' => isset($traits[0]) && $traits[0] !== [] ? implode(', ', array_map(static fn (string $u): string => trim((string) preg_replace('/^\s*use\s+|\s*[;{]$/', '', $u)), $traits[0])) : '—',
+        'Main class traits' => isset($traits[0]) && $traits[0] !== [] ? implode(', ', array_map(static fn (string $u): string => trim((string) preg_replace('/^\s*use\s+|\s*[;{]$/', '', $u), " \n\r\t\v\0"), $traits[0])) : '—',
     ];
     $out = ['### Identity', '', '| | |', '|---|---|'];
     foreach ($rows as $label => $value) {
@@ -711,7 +711,7 @@ function context_section_symfony(string $moduleDir): array
         $routes = [];
         $current = null;
         foreach (preg_split('/\R/', (string) file_get_contents($routesFile)) ?: [] as $line) {
-            $line = rtrim((string) preg_replace('/\s+#.*$/', '', $line)); // YAML comments
+            $line = rtrim((string) preg_replace('/\s+#.*$/', '', $line), " \n\r\t\v\0"); // YAML comments
             if (preg_match('/^([A-Za-z0-9_.-]+):\s*$/', $line, $m)) {
                 $current = $m[1];
                 $routes[$current] = ['path' => '', 'methods' => '', 'controller' => ''];

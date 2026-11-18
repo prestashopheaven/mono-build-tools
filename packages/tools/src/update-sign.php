@@ -193,7 +193,7 @@ function update_expand_lines(array $values, string $what): array
 {
     $lines = [];
     foreach ($values as $value) {
-        foreach (preg_split('/[\s,]+/', trim((string) $value)) ?: [] as $part) {
+        foreach (preg_split('/[\s,]+/', trim((string) $value, " \n\r\t\v\0")) ?: [] as $part) {
             if ($part === '') {
                 continue;
             }
@@ -278,7 +278,7 @@ function update_commit_message(string $ref, string $cwd): string
     $out = (string) stream_get_contents($pipes[1]);
     $err = (string) stream_get_contents($pipes[2]);
     if (proc_close($process) !== 0) {
-        throw new RuntimeException("Cannot read commit $ref: " . trim($err));
+        throw new RuntimeException("Cannot read commit $ref: " . trim($err, " \n\r\t\v\0"));
     }
 
     return $out;
@@ -312,7 +312,7 @@ function update_signing_key(): string
     if ($value === '') {
         throw new RuntimeException('UPDATE_SIGNING_KEY is not set (environment or .env). Create it once with: ps-module update-keys generate');
     }
-    $key = base64_decode(trim($value), true);
+    $key = base64_decode(trim($value, " \n\r\t\v\0"), true);
     if ($key === false || strlen($key) !== SODIUM_CRYPTO_SIGN_SECRETKEYBYTES) {
         throw new RuntimeException('UPDATE_SIGNING_KEY is not a base64 ed25519 secret key.');
     }
@@ -379,8 +379,8 @@ function update_keys_cli(array $args, string $workspace): int
         $line = "UPDATE_SIGNING_KEY=$secret";
         $text = $existing
             ? (string) preg_replace('/^\s*UPDATE_SIGNING_KEY\s*=.*$/m', $line, $text)
-            : rtrim($text) . "\n\n# Release signing key (ps-module update-keys generate). Never share; backup offline.\n$line\n";
-        file_put_contents($envFile, ltrim($text));
+            : rtrim($text, " \n\r\t\v\0") . "\n\n# Release signing key (ps-module update-keys generate). Never share; backup offline.\n$line\n";
+        file_put_contents($envFile, ltrim($text, " \n\r\t\v\0"));
         echo "ps-module update-keys: private key written to $envFile (UPDATE_SIGNING_KEY).\n";
 
         if (!$noGithub) {
@@ -413,7 +413,7 @@ function update_push_org_secret(string $secretBase64, string $org): void
     fclose($pipes[0]);
     $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
     if (proc_close($process) !== 0) {
-        throw new RuntimeException('gh could not set the organization secret (the key is in .env; after gh auth refresh -h github.com -s admin:org run: ps-module update-keys push-secret): ' . trim(str_replace($secretBase64, '***', (string) $out)));
+        throw new RuntimeException('gh could not set the organization secret (the key is in .env; after gh auth refresh -h github.com -s admin:org run: ps-module update-keys push-secret): ' . trim(str_replace($secretBase64, '***', (string) $out), " \n\r\t\v\0"));
     }
     echo "ps-module update-keys: organization secret UPDATE_SIGNING_KEY set for $org (all repositories).\n";
 }
@@ -463,7 +463,7 @@ function update_backfill_cli(array $args, string $workspace): int
     foreach ($repos as $repo) {
         [$code, $out, $err] = update_run(['gh', 'release', 'list', '--repo', $repo, '--limit', '300', '--json', 'tagName,isDraft']);
         if ($code !== 0) {
-            fwrite(STDERR, "$repo: cannot list releases: " . trim($err) . "\n");
+            fwrite(STDERR, "$repo: cannot list releases: " . trim($err, " \n\r\t\v\0") . "\n");
             ++$failures;
             continue;
         }
@@ -493,12 +493,12 @@ function update_backfill_cli(array $args, string $workspace): int
             try {
                 [$code, , $err] = update_run(['gh', 'release', 'download', $tag, '--repo', $repo, '--pattern', $zipName, '--dir', $dir]);
                 if ($code !== 0 || !is_file("$dir/$zipName")) {
-                    throw new RuntimeException('download failed: ' . trim($err));
+                    throw new RuntimeException('download failed: ' . trim($err, " \n\r\t\v\0"));
                 }
                 file_put_contents("$dir/$zipName.sig", update_sign_zip((string) file_get_contents("$dir/$zipName"), $key));
                 [$code, , $err] = update_run(['gh', 'release', 'upload', $tag, "$dir/$zipName.sig", '--repo', $repo]);
                 if ($code !== 0) {
-                    throw new RuntimeException('upload failed: ' . trim($err));
+                    throw new RuntimeException('upload failed: ' . trim($err, " \n\r\t\v\0"));
                 }
                 echo "$repo $tag: signed and uploaded $zipName.sig\n";
             } catch (Throwable $e) {
@@ -592,7 +592,7 @@ function update_secret_cli(array $args, string $workspace, string $cwd): int
             [$code, $out, $err] = update_run(['gh', 'secret', 'list', '--repo', $repo, '--json', 'name']);
             $names = $code === 0 ? array_column(json_decode($out, true) ?: [], 'name') : [];
             $has = in_array('UPDATE_SIGNING_KEY', $names, true);
-            echo str_pad($repo, 50) . ($code !== 0 ? 'cannot read: ' . trim($err) : ($has ? 'UPDATE_SIGNING_KEY set' : 'UPDATE_SIGNING_KEY MISSING')) . "\n";
+            echo str_pad($repo, 50) . ($code !== 0 ? 'cannot read: ' . trim($err, " \n\r\t\v\0") : ($has ? 'UPDATE_SIGNING_KEY set' : 'UPDATE_SIGNING_KEY MISSING')) . "\n";
             $failures += ($code !== 0 || !$has) ? 1 : 0;
         }
 
@@ -616,7 +616,7 @@ function update_secret_cli(array $args, string $workspace, string $cwd): int
         fclose($pipes[0]);
         $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
         if (proc_close($process) !== 0) {
-            fwrite(STDERR, "$repo: gh could not set the secret: " . trim(str_replace($secret, '***', (string) $out)) . "\n");
+            fwrite(STDERR, "$repo: gh could not set the secret: " . trim(str_replace($secret, '***', (string) $out), " \n\r\t\v\0") . "\n");
             ++$failures;
             continue;
         }

@@ -147,7 +147,7 @@ function checkVendorScripts(string $moduleDir): array
         $licenses = array_filter(
             scandir("$vendorDir/$entry") ?: [],
             static fn (string $f): bool => preg_match('/^(LICEN[CS]E|COPYING)([.-][\w.-]+)?$/i', $f) === 1
-                && is_file("$vendorDir/$entry/$f") && trim((string) file_get_contents("$vendorDir/$entry/$f")) !== ''
+                && is_file("$vendorDir/$entry/$f") && trim((string) file_get_contents("$vendorDir/$entry/$f"), " \n\r\t\v\0") !== ''
         );
         if ($licenses === []) {
             $found[] = "views/js/vendor/$entry/:1 TST-27 third-party library without its license: add the library's LICENSE file to views/js/vendor/$entry/ (only unmodified third-party code is exempt from tests)";

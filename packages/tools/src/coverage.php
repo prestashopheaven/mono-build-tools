@@ -139,7 +139,7 @@ function coverageMissing(string $moduleDir, string $xml): array
         // Its "if" line is not counted either: a class first loaded in a data provider (before coverage starts)
         // shows it as never run; whether the class is tested at all is TST-04.
         $guard = static function (int $num) use ($source): bool {
-            $line = trim((string) ($source[$num - 1] ?? ''));
+            $line = trim((string) ($source[$num - 1] ?? ''), " \n\r\t\v\0");
 
             return ($line === 'exit;' && str_contains((string) ($source[$num - 2] ?? ''), '_PS_VERSION_'))
                 || str_starts_with($line, "if (!defined('_PS_VERSION_'))");

@@ -56,7 +56,7 @@ function docs_site_language(array $available): string
     $wanted = isset($_GET['lang']) && is_string($_GET['lang']) ? [$_GET['lang']] : [];
     $header = isset($_SERVER['HTTP_ACCEPT_LANGUAGE']) && is_string($_SERVER['HTTP_ACCEPT_LANGUAGE']) ? $_SERVER['HTTP_ACCEPT_LANGUAGE'] : '';
     foreach (explode(',', $header) as $part) {
-        $wanted[] = strtolower(substr(trim(explode(';', $part)[0]), 0, 2));
+        $wanted[] = strtolower(substr(trim(explode(';', $part)[0], " \n\r\t\v\0"), 0, 2));
     }
     // Norwegian browsers send nb/nn; the manuals use "no".
     $wanted = array_map(static fn (string $iso): string => in_array($iso, ['nb', 'nn'], true) ? 'no' : $iso, $wanted);

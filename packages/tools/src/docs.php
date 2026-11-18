@@ -129,7 +129,7 @@ function docs_main(array $argv): int
         default:
             $help = (string) file_get_contents(__FILE__);
             preg_match('#/\*\n(.*?)\*/#s', substr($help, (int) strpos($help, '/*', 10)), $m);
-            echo trim((string) preg_replace('/^ \* ?/m', '', $m[1] ?? '')) . "\n";
+            echo trim((string) preg_replace('/^ \* ?/m', '', $m[1] ?? ''), " \n\r\t\v\0") . "\n";
 
             return $command === 'help' ? 0 : 2;
     }
@@ -263,7 +263,7 @@ function docs_front_matter(string $text): array
     $meta = [];
     foreach (explode("\n", $m[1]) as $line) {
         if (preg_match('/^([a-z_]+):[ \t]*(.*)$/', $line, $kv)) {
-            $value = trim($kv[2]);
+            $value = trim($kv[2], " \n\r\t\v\0");
             if (strlen($value) >= 2 && (($value[0] === '"' && str_ends_with($value, '"')) || ($value[0] === "'" && str_ends_with($value, "'")))) {
                 $value = substr($value, 1, -1);
             }
@@ -320,9 +320,9 @@ function docs_manual_sections(string $body): array
     $sections = [];
     foreach ($parts as $part) {
         if (str_starts_with($part, '## ')) {
-            $title = trim(strtok(substr($part, 3), "\n") ?: '');
+            $title = trim(strtok(substr($part, 3), "\n") ?: '', " \n\r\t\v\0");
             $sections[] = ['title' => $title, 'text' => $part];
-        } elseif (trim($part) !== '') {
+        } elseif (trim($part, " \n\r\t\v\0") !== '') {
             $sections[] = ['title' => '(intro)', 'text' => $part];
         }
     }
@@ -337,7 +337,7 @@ function docs_hash(string $text): string
 {
     $text = (string) preg_replace('/<!--.*?-->/s', '', $text);
 
-    return substr(sha1(trim((string) preg_replace('/\s+/u', ' ', $text))), 0, 8);
+    return substr(sha1(trim((string) preg_replace('/\s+/u', ' ', $text), " \n\r\t\v\0")), 0, 8);
 }
 
 /**
@@ -488,7 +488,7 @@ function docs_validate_config(array $ctx, array $config, callable $add): void
         if (!in_array($shot['area'] ?? '', ['bo', 'fo'], true)) {
             $add('error', '*', $file, "$label.area must be \"bo\" (back office) or \"fo\" (front office)");
         }
-        if (trim((string) ($shot['path'] ?? '')) === '') {
+        if (trim((string) ($shot['path'] ?? ''), " \n\r\t\v\0") === '') {
             $add('error', '*', $file, "$label.path is empty (fo: e.g. \"/\"; bo: \"@configure\", \"@menu:1\", a Symfony route or index.php?controller=AdminX)");
         }
         $viewport = $shot['viewport'] ?? 'desktop';
@@ -610,7 +610,7 @@ function docs_validate_manual(array $ctx, string $iso, ?array $source, callable 
 
         return;
     }
-    if ($iso !== $ctx['source'] && $source !== null && (docs_hash($manual['body']) === docs_hash($source['body']) || trim($manual['meta']['translated_from'] ?? '') === '')) {
+    if ($iso !== $ctx['source'] && $source !== null && (docs_hash($manual['body']) === docs_hash($source['body']) || trim($manual['meta']['translated_from'] ?? '', " \n\r\t\v\0") === '')) {
         $add('error', $iso, $file, "not translated yet: translate docs/content/{$ctx['source']}/manual.md into {$iso} (" . ($ctx['catalog'][$iso]['name'] ?? $iso) . ") in this file, keep the front matter (language: $iso), then: ps-module docs mark-translated $iso manual");
 
         return;
@@ -618,7 +618,7 @@ function docs_validate_manual(array $ctx, string $iso, ?array $source, callable 
     $meta = $manual['meta'];
     docs_validate_meta($ctx, $iso, $file, $meta, $add);
     foreach (['title', 'toc_title'] as $key) {
-        if (trim($meta[$key] ?? '') === '') {
+        if (trim($meta[$key] ?? '', " \n\r\t\v\0") === '') {
             $add('error', $iso, $file, "front matter '$key' is empty");
         }
     }
@@ -635,7 +635,7 @@ function docs_validate_manual(array $ctx, string $iso, ?array $source, callable 
     if ($h2 < 3) {
         $add('error', $iso, $file, "only $h2 sections (## ...): a manual needs at least introduction, installation and configuration");
     }
-    $plain = trim((string) preg_replace('/\s+/u', ' ', strip_tags(docs_md_render($body, static fn (): array => ['src' => '']))));
+    $plain = trim((string) preg_replace('/\s+/u', ' ', strip_tags(docs_md_render($body, static fn (): array => ['src' => '']))), " \n\r\t\v\0");
     $cjk = in_array($iso, ['ja', 'zh', 'ko', 'th'], true);
     $size = $cjk ? mb_strlen($plain) : count(preg_split('/\s+/u', $plain) ?: []);
     if ($size < ($cjk ? 700 : 300)) {
@@ -712,7 +712,7 @@ function docs_todo_where(array $manual): string
     $section = '(intro)';
     foreach (explode("\n", $manual['body']) as $line) {
         if (str_starts_with($line, '## ')) {
-            $section = trim(substr($line, 3));
+            $section = trim(substr($line, 3), " \n\r\t\v\0");
         }
         if (preg_match(DOCS_TODO, $line)) {
             $where[$section] = true;
@@ -822,7 +822,7 @@ function docs_validate_marketing(array $ctx, string $iso, ?array $source, callab
         }
         $value = $data[$key] ?? null;
         if ($field['type'] === 'text') {
-            $text = is_string($value) ? trim($value) : '';
+            $text = is_string($value) ? trim($value, " \n\r\t\v\0") : '';
             $length = mb_strlen(docs_plain_text($text));
             if ($text === '') {
                 $add('error', $iso, $file, "$key is empty ({$field['question']})");
@@ -844,7 +844,7 @@ function docs_validate_marketing(array $ctx, string $iso, ?array $source, callab
         }
         $total = 0;
         foreach ($value as $n => $item) {
-            $item = is_string($item) ? trim($item) : '';
+            $item = is_string($item) ? trim($item, " \n\r\t\v\0") : '';
             $length = mb_strlen(docs_plain_text($item));
             $total += $length;
             if ($item === '') {
@@ -933,7 +933,7 @@ function docs_contact_details(string $text): array
     preg_match_all('~(?<![\w/#:-]|\d[.,])\+?\(?\d{1,4}\)?(?:[ -]?\(?\d{1,4}\)?){2,6}(?![\w/:-]|[.,]\d)~', $text, $phones);
     $phones = array_filter($phones[0], static fn (string $p): bool => strlen((string) preg_replace('/\D/', '', $p)) >= 9);
 
-    return array_slice(array_values(array_unique(array_map(static fn (string $m): string => rtrim(trim($m), '.,;:!?'), array_merge($urls[0], $mails[0], $phones)))), 0, 5);
+    return array_slice(array_values(array_unique(array_map(static fn (string $m): string => rtrim(trim($m, " \n\r\t\v\0"), '.,;:!?'), array_merge($urls[0], $mails[0], $phones)))), 0, 5);
 }
 
 /**
@@ -975,7 +975,7 @@ function docs_plain_text(string $text): string
 {
     $text = (string) preg_replace('/!?\[([^\]]*)\]\([^)]*\)/', '$1', $text);
 
-    return trim(str_replace(['**', '__', '`'], '', $text));
+    return trim(str_replace(['**', '__', '`'], '', $text), " \n\r\t\v\0");
 }
 
 /**

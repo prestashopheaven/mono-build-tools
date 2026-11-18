@@ -466,7 +466,7 @@ function publish_shop_field(DOMDocument $doc, string $field): string
     $product = publish_shop_product_node($doc);
     $node = $product !== null ? publish_shop_child($product, $field) : null;
 
-    return $node !== null ? trim($node->textContent) : '';
+    return $node !== null ? trim($node->textContent, " \n\r\t\v\0") : '';
 }
 
 /**
@@ -483,7 +483,7 @@ function publish_shop_association_ids(DOMDocument $doc, string $association): ar
     foreach ($list !== null ? $list->childNodes : [] as $item) {
         $id = $item instanceof DOMElement ? publish_shop_child($item, 'id') : null;
         if ($id !== null) {
-            $ids[] = trim($id->textContent);
+            $ids[] = trim($id->textContent, " \n\r\t\v\0");
         }
     }
 
@@ -551,7 +551,7 @@ function publish_shop_text_changes(DOMDocument $doc, array $multilang): array
                 $current[(int) $language->getAttribute('id')] = $language->textContent;
             }
         }
-        $changes[$field] = count(array_filter($values, static fn (string $text, int $id): bool => trim($text) !== trim($current[$id] ?? ''), ARRAY_FILTER_USE_BOTH));
+        $changes[$field] = count(array_filter($values, static fn (string $text, int $id): bool => trim($text, " \n\r\t\v\0") !== trim($current[$id] ?? '', " \n\r\t\v\0"), ARRAY_FILTER_USE_BOTH));
     }
 
     return $changes;
@@ -589,7 +589,7 @@ function publish_shop_update_xml(DOMDocument $current, array $multilang, array $
     // An empty plain field is NULL (or '') in the database. Sent back as '', the shop stores 0 in a nullable number
     // (low_stock_threshold NULL became 0 on PrestaShop 8.1); left out, it stores NULL (or '') again.
     foreach (iterator_to_array($product->childNodes) as $node) {
-        if ($node instanceof DOMElement && !in_array($node->tagName, ['id', 'id_default_image'], true) && trim($node->textContent) === '' && !publish_shop_has_elements($node)) {
+        if ($node instanceof DOMElement && !in_array($node->tagName, ['id', 'id_default_image'], true) && trim($node->textContent, " \n\r\t\v\0") === '' && !publish_shop_has_elements($node)) {
             $product->removeChild($node);
         }
     }
@@ -644,7 +644,7 @@ function publish_shop_update_xml(DOMDocument $current, array $multilang, array $
             $ours = array_map(static fn (array $f): string => (string) $f['feature'], $features);
             foreach (iterator_to_array($list->childNodes) as $item) {
                 $featureId = $item instanceof DOMElement ? publish_shop_child($item, 'id') : null;
-                if ($featureId !== null && in_array(trim($featureId->textContent), $ours, true)) {
+                if ($featureId !== null && in_array(trim($featureId->textContent, " \n\r\t\v\0"), $ours, true)) {
                     $list->removeChild($item);
                 }
             }
@@ -898,7 +898,7 @@ function publish_shop_image_set(array $ctx, array $plan, array $languages, bool 
  */
 function publish_shop_legend(string $text): string
 {
-    $clean = trim((string) preg_replace('/[\x00-\x1F\x7F<>={}]+/u', ' ', $text));
+    $clean = trim((string) preg_replace('/[\x00-\x1F\x7F<>={}]+/u', ' ', $text), " \n\r\t\v\0");
 
     return publish_shop_cut((string) preg_replace('/\s{2,}/u', ' ', $clean), 128);
 }
@@ -1002,9 +1002,9 @@ function publish_shop_html(string $text, array $features): string
 {
     $inline = static fn (string $s): string => (string) preg_replace('/\*\*(.+?)\*\*/u', '<strong>$1</strong>', htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     $html = '';
-    foreach (preg_split('/\R\s*\R/u', trim($text)) ?: [] as $paragraph) {
-        if (trim($paragraph) !== '') {
-            $html .= '<p>' . str_replace("\n", '<br>', $inline(trim($paragraph))) . "</p>\n";
+    foreach (preg_split('/\R\s*\R/u', trim($text, " \n\r\t\v\0")) ?: [] as $paragraph) {
+        if (trim($paragraph, " \n\r\t\v\0") !== '') {
+            $html .= '<p>' . str_replace("\n", '<br>', $inline(trim($paragraph, " \n\r\t\v\0"))) . "</p>\n";
         }
     }
     $features = array_filter(array_map('trim', $features), static fn (string $f): bool => $f !== '');
@@ -1209,12 +1209,12 @@ function publish_shop_features(array $ws, array $features, array $languages): ar
  */
 function publish_shop_match(array $rows, string $field, array $texts): ?int
 {
-    $wanted = array_map(static fn (string $t): string => mb_strtolower(trim($t)), array_values($texts));
+    $wanted = array_map(static fn (string $t): string => mb_strtolower(trim($t, " \n\r\t\v\0")), array_values($texts));
     foreach ($rows as $row) {
         $values = is_array($row) ? ($row[$field] ?? '') : '';
         $values = is_array($values) ? array_map(static fn ($v): string => is_array($v) ? (string) ($v['value'] ?? '') : (string) $v, $values) : [(string) $values];
         foreach ($values as $value) {
-            if ($value !== '' && in_array(mb_strtolower(trim($value)), $wanted, true)) {
+            if ($value !== '' && in_array(mb_strtolower(trim($value, " \n\r\t\v\0")), $wanted, true)) {
                 return (int) $row['id'];
             }
         }

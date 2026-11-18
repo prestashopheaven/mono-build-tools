@@ -135,7 +135,7 @@ function gitflow_exec(string $command, ?string $cwd): array
     ps_vcmd($command, $cwd ?? (string) getcwd());
     $start = microtime(true);
     exec($command, $output, $code);
-    $out = trim(implode("\n", $output));
+    $out = trim(implode("\n", $output), " \n\r\t\v\0");
     ps_vdone((string) strtok($command, ' '), $start, (int) $code);
     if ($out !== '' && ps_verbose()) {
         $lines = preg_split('/\R/', $out) ?: [];
@@ -187,10 +187,10 @@ function gitflow_state(string $repoDir, bool $remote = false): array
     // No --format: escapeshellarg() on Windows turns "%" into a space.
     [, $merged] = gitflow_git($repoDir, ['branch', '--merged', $default]);
     $mergedBranches = array_values(array_filter(
-        array_map(static fn (string $l): string => trim(ltrim($l, '*+ ')), preg_split('/\R/', $merged) ?: []),
+        array_map(static fn (string $l): string => trim(ltrim($l, '*+ '), " \n\r\t\v\0"), preg_split('/\R/', $merged) ?: []),
         static fn (string $b): bool => $b !== '' && $b !== $default && $b !== $branch && preg_match('#^(feature|fix)/#', $b) === 1
     ));
-    $dirty = array_values(array_filter(preg_split('/\R/', $porcelain) ?: [], static fn (string $l): bool => trim($l) !== ''));
+    $dirty = array_values(array_filter(preg_split('/\R/', $porcelain) ?: [], static fn (string $l): bool => trim($l, " \n\r\t\v\0") !== ''));
 
     $state = [
         'repo' => $repoDir,
@@ -199,7 +199,7 @@ function gitflow_state(string $repoDir, bool $remote = false): array
         'on_default' => $branch === $default,
         'head' => $headCode === 0 ? $head : '',
         'dirty' => count($dirty),
-        'dirty_files' => array_slice(array_map(static fn (string $l): string => trim(substr($l, 3)), $dirty), 0, 8),
+        'dirty_files' => array_slice(array_map(static fn (string $l): string => trim(substr($l, 3), " \n\r\t\v\0"), $dirty), 0, 8),
         'remote' => $hasRemote ? $remoteUrl : '',
         'host' => !$hasRemote ? 'none' : (str_contains($remoteUrl, 'github.com') ? 'github' : (str_contains($remoteUrl, 'gitlab') ? 'gitlab' : 'other')),
         'upstream' => $upCode === 0 ? $upstream : '',
@@ -550,7 +550,7 @@ function gitflow_pr(string $repoDir, array $options = []): int
 
             return 1;
         }
-        $notes = trim($options['notes'] ?? '');
+        $notes = trim($options['notes'] ?? '', " \n\r\t\v\0");
         $title = 'Release ' . $options['release'] . ' - ' . ($notes !== '' ? $notes : (string) preg_replace('/^Release \S+ - /', '', $title));
         if (isset($options['publish'])) {
             try {
@@ -675,7 +675,7 @@ function gitflow_trailers_from_body(string $body): string
         return '';
     }
 
-    return trim(substr($body, $start + strlen(GITFLOW_TRAILERS_START), $end - $start - strlen(GITFLOW_TRAILERS_START)));
+    return trim(substr($body, $start + strlen(GITFLOW_TRAILERS_START), $end - $start - strlen(GITFLOW_TRAILERS_START)), " \n\r\t\v\0");
 }
 
 /**

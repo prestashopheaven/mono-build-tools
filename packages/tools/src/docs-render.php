@@ -526,7 +526,7 @@ function docs_pdf_fonts(array $ctx, array $pdfs): array
     $current = '';
     foreach (explode("\n", $output) as $line) {
         if (str_starts_with($line, '@@ ')) {
-            $current = trim(substr($line, 3));
+            $current = trim(substr($line, 3), " \n\r\t\v\0");
             $fonts[$current] = [];
         } elseif ($current !== '' && preg_match('/^(?:[A-Z]{6}\+)?(\S+)\s+(Type|TrueType|CID)/', $line, $m)) {
             $fonts[$current][$m[1]] = true;
@@ -576,7 +576,7 @@ function docs_pdf_chrome(array $todo): array
         ], 180);
         docs_remove_dir($profile);
         $ok = docs_is_pdf($item['pdf']);
-        $states[$iso] = ['ok' => $ok, 'error' => $ok ? '' : 'exit code ' . $code . ': ' . substr(trim($output), 0, 200)];
+        $states[$iso] = ['ok' => $ok, 'error' => $ok ? '' : 'exit code ' . $code . ': ' . substr(trim($output, " \n\r\t\v\0"), 0, 200)];
     }
 
     return $states;
@@ -599,7 +599,7 @@ function docs_pdf_wkhtmltopdf(array $todo): array
     foreach ($todo as $iso => $item) {
         [$code, $output] = docs_exec([$bin, '--quiet', '--enable-local-file-access', '--print-media-type', '--encoding', 'utf-8', $item['html'], $item['pdf']], 180);
         $ok = docs_is_pdf($item['pdf']);
-        $states[$iso] = ['ok' => $ok, 'error' => $ok ? '' : 'exit code ' . $code . ': ' . substr(trim($output), 0, 200)];
+        $states[$iso] = ['ok' => $ok, 'error' => $ok ? '' : 'exit code ' . $code . ': ' . substr(trim($output, " \n\r\t\v\0"), 0, 200)];
     }
 
     return $states;
@@ -790,7 +790,7 @@ function docs_pdf_preview(array $ctx, string $iso, string $pages): array
     ]), 300);
     $files = glob("$outDir/$iso-*.png") ?: [];
     if ($code !== 0 || $files === []) {
-        return ['ok' => false, 'message' => 'pdftoppm failed: ' . trim($output)];
+        return ['ok' => false, 'message' => 'pdftoppm failed: ' . trim($output, " \n\r\t\v\0")];
     }
 
     return ['ok' => true, 'message' => "Preview of the $iso PDF (pages $first-$last):\n  " . implode("\n  ", array_map(static fn (string $f): string => str_replace('\\', '/', $f), $files))];
@@ -1040,7 +1040,7 @@ function docs_marketing_text(array $v): string
         return $value === [] ? '-' : implode("\n", array_map(static fn ($item): string => '- ' . $item, $value));
     }
 
-    return trim((string) $value);
+    return trim((string) $value, " \n\r\t\v\0");
 }
 
 /**

@@ -169,7 +169,7 @@ function msShopScript(Shop $shop, string $command, string $arguments = ''): arra
             ps_vlog('  container: ' . (string) preg_replace('/^\[v [\d:]+\] /', '', $line));
         }
         $lines = array_values(array_diff_key($lines, $verbose));
-        $result['output'] = trim(implode("\n", $lines));
+        $result['output'] = trim(implode("\n", $lines), " \n\r\t\v\0");
     }
     $data = json_decode((string) end($lines), true);
     if (!is_array($data)) {
@@ -178,7 +178,7 @@ function msShopScript(Shop $shop, string $command, string $arguments = ''): arra
         return ['ok' => false, 'problems' => ["ps-multistore-shop.php $command failed:\n" . lastLines($result['output'], 20)]];
     }
     // Lines before the answer (PHP notices of the shop) are not shown otherwise.
-    $extra = trim(implode("\n", array_slice($lines, 0, -1)));
+    $extra = trim(implode("\n", array_slice($lines, 0, -1)), " \n\r\t\v\0");
     ps_vlog("multistore: $command answered " . json_encode($data, JSON_UNESCAPED_SLASHES) . ($extra !== '' ? "\n    other output:\n" . vIndent($extra) : ''));
 
     return $data;
@@ -195,7 +195,7 @@ function msResult(array $data): array
 {
     $output = implode("\n", (array) ($data['problems'] ?? []));
     if (!empty($data['configuration_left'])) {
-        $output = trim($output . "\nnote: configuration rows of the deleted shop remain (harmless, uninstall removes them): " . implode(', ', $data['configuration_left']));
+        $output = trim($output . "\nnote: configuration rows of the deleted shop remain (harmless, uninstall removes them): " . implode(', ', $data['configuration_left']), " \n\r\t\v\0");
     }
 
     return ['ok' => (bool) ($data['ok'] ?? false), 'output' => $output];
@@ -277,7 +277,7 @@ function msPhpErrors(string $path, string $body): array
     $problems = [];
     foreach (['Fatal error', 'Parse error', 'Warning: ', 'Notice: ', 'Deprecated: ', 'Uncaught '] as $needle) {
         if (str_contains($body, $needle)) {
-            $problems[] = "$path contains '" . trim($needle) . "'";
+            $problems[] = "$path contains '" . trim($needle, " \n\r\t\v\0") . "'";
         }
     }
 
@@ -642,7 +642,7 @@ function msParseFormPage(string $html, string $final): array|string
         } elseif ($type === 'radio' && !preg_match('/\bchecked\b/', $attrs)) {
             continue;
         } elseif ($element === 'textarea') {
-            $value = html_entity_decode(trim($content));
+            $value = html_entity_decode(trim($content, " \n\r\t\v\0"));
         } elseif ($element === 'select') {
             preg_match('/<option[^>]*\bselected\b[^>]*value="([^"]*)"|<option[^>]*value="([^"]*)"[^>]*\bselected\b/i', $content, $o);
             $value = html_entity_decode(($o[1] ?? '') !== '' ? $o[1] : ($o[2] ?? ''));
@@ -693,7 +693,7 @@ function msSameValue(string $shown, string $marker, bool $numeric): bool
         return $shown === $marker;
     }
 
-    return msIsNumber($shown) && abs((float) str_replace(',', '.', trim($shown)) - (float) $marker) < 0.000001;
+    return msIsNumber($shown) && abs((float) str_replace(',', '.', trim($shown, " \n\r\t\v\0")) - (float) $marker) < 0.000001;
 }
 
 /**
@@ -721,14 +721,14 @@ function msSubmit(string $jar, array $page, array $fields): ?string
         return "HTTP $status ($final)";
     }
     if (preg_match('/<div[^>]*class="[^"]*alert-danger[^"]*"[^>]*>(.*?)<\/div>/is', $html, $m)) {
-        return trim((string) preg_replace('/\s+/', ' ', strip_tags($m[1])));
+        return trim((string) preg_replace('/\s+/', ' ', strip_tags($m[1])), " \n\r\t\v\0");
     }
-    if (preg_match('/class="[^"]*invalid-feedback[^"]*"[^>]*>(.*?)<\//is', $html, $m) && trim(strip_tags($m[1])) !== '') {
-        return 'field error: ' . trim(strip_tags($m[1]));
+    if (preg_match('/class="[^"]*invalid-feedback[^"]*"[^>]*>(.*?)<\//is', $html, $m) && trim(strip_tags($m[1]), " \n\r\t\v\0") !== '') {
+        return 'field error: ' . trim(strip_tags($m[1]), " \n\r\t\v\0");
     }
     // Field errors of the PrestaShop UI kit form theme (form_errors_field): <div class="... text-danger ..." role="alert">.
     if (preg_match('/<div[^>]*class="[^"]*\btext-danger\b[^"]*"[^>]*role="alert"[^>]*>(.*?)<\/div>/is', $html, $m)) {
-        $error = trim((string) preg_replace('/\s+/', ' ', strip_tags((string) preg_replace('/<i\b[^>]*>.*?<\/i>/is', '', $m[1]))));
+        $error = trim((string) preg_replace('/\s+/', ' ', strip_tags((string) preg_replace('/<i\b[^>]*>.*?<\/i>/is', '', $m[1]))), " \n\r\t\v\0");
         if ($error !== '') {
             return 'field error: ' . $error;
         }

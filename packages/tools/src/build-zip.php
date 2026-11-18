@@ -316,7 +316,7 @@ function sortImportBlocks(string $code): string
     return (string) preg_replace_callback(
         '/^(?:use [A-Za-z0-9_\\\\]+(?: as [A-Za-z0-9_]+)?;\R)+/m',
         static function (array $m): string {
-            $lines = preg_split('/\R/', rtrim($m[0])) ?: [];
+            $lines = preg_split('/\R/', rtrim($m[0], " \n\r\t\v\0")) ?: [];
             $key = static fn (string $line): string => str_replace('\\', ' ', (string) preg_replace('/^use |;$/', '', $line));
             usort($lines, static fn (string $a, string $b): int => strcasecmp($key($a), $key($b)));
             $eol = str_contains($m[0], "\r\n") ? "\r\n" : "\n";

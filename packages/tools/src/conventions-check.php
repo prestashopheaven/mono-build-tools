@@ -246,8 +246,8 @@ function checkMainClass(array $tokens): array
 function hasDescription(string $doc): bool
 {
     foreach (preg_split('/\R/', $doc) ?: [] as $line) {
-        $line = trim(preg_replace('#^\s*(/\*\*|\*/|\*)#', '', $line) ?? '');
-        $line = trim(str_replace('*/', '', $line));
+        $line = trim(preg_replace('#^\s*(/\*\*|\*/|\*)#', '', $line) ?? '', " \n\r\t\v\0");
+        $line = trim(str_replace('*/', '', $line), " \n\r\t\v\0");
         if ($line !== '' && $line[0] !== '@') {
             return true;
         }
