@@ -66,7 +66,7 @@ function instance_enabled(string $pool, string $from): bool
     if (!isset(INSTANCE_PORT_BASE[$pool])) {
         return false;
     }
-    $env = strtolower(trim((string) getenv('PS_TEST_INSTANCE')));
+    $env = strtolower(trim((string) getenv('PS_TEST_INSTANCE'), " \t\n\r"));
     if ($env !== '') {
         if (in_array($env, ['off', '0', 'no', 'false'], true)) {
             return false;
@@ -410,7 +410,7 @@ function instance_reserve(string $dir, string $pool, string $module, string $ver
             }
         }
 
-        throw new RuntimeException("All " . INSTANCE_MAX_SLOTS . " slots of the $pool instance are taken (ps-module instance status).");
+        throw new RuntimeException('All ' . INSTANCE_MAX_SLOTS . " slots of the $pool instance are taken (ps-module instance status).");
     } finally {
         if (!$held) {
             ps_unlock("instance-$pool");
@@ -542,7 +542,7 @@ function instance_main(string $cwd, array $args): int
             case 'status':
                 foreach ($pools as $pool) {
                     [$code, $state] = instance_run(['docker', 'inspect', '-f', '{{.State.Running}}', "psh-$pool-db"]);
-                    echo "Instance psh-$pool (" . (instance_enabled($pool, $dir) ? 'on' : 'off') . "): MySQL " . ($code === 0 && $state === 'true' ? 'running' : 'not running') . "\n";
+                    echo "Instance psh-$pool (" . (instance_enabled($pool, $dir) ? 'on' : 'off') . '): MySQL ' . ($code === 0 && $state === 'true' ? 'running' : 'not running') . "\n";
                     foreach (instance_slots($dir, $pool) as $index => $slot) {
                         printf("  slot %-2d port %d  %-26s PrestaShop %-8s since %s\n", $index, INSTANCE_PORT_BASE[$pool] + $index, $slot['module'], $slot['version'], date('H:i', (int) $slot['since']));
                     }
@@ -555,8 +555,7 @@ function instance_main(string $cwd, array $args): int
             case 'enable':
             case 'disable':
                 instance_switch($dir, $pools, $rest[0] === 'enable');
-                echo 'Shared instance ' . implode(', ', $pools) . ': ' . ($rest[0] === 'enable' ? 'on' : 'off') . ($rest[0] === 'enable' && (string) getenv('CI') !== '' ? ' (not in CI)' : '') . "
-";
+                echo 'Shared instance ' . implode(', ', $pools) . ': ' . ($rest[0] === 'enable' ? 'on' : 'off') . ($rest[0] === 'enable' && (string) getenv('CI') !== '' ? ' (not in CI)' : '') . "\n";
 
                 return 0;
             case 'template':

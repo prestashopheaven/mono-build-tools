@@ -437,7 +437,7 @@ function queue_lease(string $dir, string $pool, string $module, string $label, b
         }
         if ($waited - $lastSaid >= 60) {
             $current = queue_job($dir, $job['id']) ?? $job;
-            $say("Queue: waiting in the $pool pool, position " . queue_position($dir, $current) . " (ps-module queue list).");
+            $say("Queue: waiting in the $pool pool, position " . queue_position($dir, $current) . ' (ps-module queue list).');
             $lastSaid = $waited;
         }
         $sleep(3);
@@ -633,7 +633,7 @@ function queue_main(string $cwd, array $args): int
                     return 2;
                 }
                 $log = (string) @file_get_contents("$dir/{$job['pool']}/{$job['id']}.log");
-                $lines = array_slice(preg_split('/\R/', rtrim($log)) ?: [], -max(1, (int) ($options['lines'] ?? 40)));
+                $lines = array_slice(preg_split('/\R/', rtrim($log, " \t\n\r")) ?: [], -max(1, (int) ($options['lines'] ?? 40)));
                 echo "{$job['id']} " . queue_status_line($dir, $job) . "\n" . implode("\n", $lines) . "\n";
                 if (!in_array($job['state'], QUEUE_OPEN, true)) {
                     queue_locked($dir, $job['pool'], static function () use ($dir, $job): void {
