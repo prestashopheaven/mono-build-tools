@@ -22,6 +22,8 @@
  *   ps-module factory approve --by="<name>" --ref="<message>"   record the final approval of the current spec (intake)
  *   ps-module factory review <stage> --verdict=approved|changes [--findings=FILE]
  *                                                     record the reviewer agent's verdict on the current design or code
+ *   ps-module factory abandon --reason="<why>"         end a dropped run: archive the spec in the workspace
+ *                                                     (docs/ideeen/dropped/), remove .factory/ (and an empty new repo)
  *   ps-module factory wait-package <package> <version> [--timeout=SECONDS]
  *                                                     wait until Packagist has a version of one of our packages (F2)
  *
@@ -697,6 +699,61 @@ function factory_wait_package(string $repoDir, string $package, string $version,
 }
 
 /**
+ * Ends a dropped run cleanly: the spec (when there is one) is archived with the reason in the workspace
+ * (docs/ideeen/dropped/<repo>-<date>.json), then .factory/ is removed, and a new module's folder too when nothing
+ * else is in it. Returns the archive file, or null when there was no spec to keep.
+ *
+ * @throws RuntimeException when there is no run, or the archive cannot be written
+ * @throws InvalidArgumentException when the reason is empty
+ */
+function factory_abandon(string $repoDir, string $reason, ?string $workspace = null, ?int $now = null): ?string
+{
+    if (trim($reason, " \n\r\t\v\0") === '') {
+        throw new InvalidArgumentException('Usage: ps-module factory abandon --reason="<why the run is dropped>"');
+    }
+    $state = factory_state($repoDir);
+    if ($state === null) {
+        throw new RuntimeException('No factory run in this repository.');
+    }
+    $repoDir = rtrim($repoDir, '/');
+    $archive = null;
+    $spec = factory_json($repoDir, 'spec.json');
+    if ($spec !== null) {
+        $workspace ??= dirname($repoDir, 2);
+        $dir = rtrim($workspace, '/') . '/docs/ideeen/dropped';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RuntimeException("Cannot create $dir.");
+        }
+        $archive = $dir . '/' . basename($repoDir) . '-' . gmdate('Ymd-His', $now ?? time()) . '.json';
+        $entry = ['repo' => basename($repoDir), 'path' => $state['path'] ?? 'new', 'change' => $state['change'] ?? null, 'dropped' => gmdate('c', $now ?? time()), 'reason' => $reason, 'spec' => $spec];
+        if (file_put_contents($archive, json_encode($entry, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n") === false) {
+            throw new RuntimeException("Cannot write $archive.");
+        }
+    }
+    factory_remove_tree(factory_path($repoDir));
+    if (($state['path'] ?? 'new') === 'new' && is_dir($repoDir) && array_diff(scandir($repoDir) ?: [], ['.', '..']) === []) {
+        @rmdir($repoDir);
+    }
+
+    return $archive;
+}
+
+/**
+ * Removes a folder with everything in it (no symlinks followed).
+ */
+function factory_remove_tree(string $dir): void
+{
+    if (!is_dir($dir)) {
+        return;
+    }
+    $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($items as $item) {
+        $item->isDir() && !$item->isLink() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+    }
+    rmdir($dir);
+}
+
+/**
  * The command line of ps-module factory. Returns the exit code.
  *
  * @param list<string> $args
@@ -766,12 +823,17 @@ function factory_main(string $repoDir, array $args): int
                 echo 'Review of ' . ($rest[1] ?? '') . ' recorded: ' . ($options['verdict'] ?? '') . ".\n";
 
                 return 0;
+            case 'abandon':
+                $archive = factory_abandon($repoDir, $options['reason'] ?? '');
+                echo 'Run abandoned' . ($archive === null ? ' (no spec to keep).' : "; spec archived in $archive.") . "\n";
+
+                return 0;
             case 'wait-package':
                 factory_wait_package($repoDir, $rest[1] ?? '', $rest[2] ?? '', (int) ($options['timeout'] ?? 3600));
 
                 return 0;
             default:
-                fwrite(STDERR, "Usage: ps-module factory init [--change=\"<request>\"] | status [--json] | gate <stage> | approve --by=<name> --ref=<message> | review design|verify --verdict=approved|changes [--findings=FILE] | wait-package <package> <X.Y.Z>\n");
+                fwrite(STDERR, "Usage: ps-module factory init [--change=\"<request>\"] | status [--json] | gate <stage> | approve --by=<name> --ref=<message> | review design|verify --verdict=approved|changes [--findings=FILE] | wait-package <package> <X.Y.Z> | abandon --reason=<why>\n");
 
                 return 2;
         }

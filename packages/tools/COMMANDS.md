@@ -280,7 +280,7 @@ publish a released version: the tag `v<version>` must exist, unless it runs in C
 
 | Command | What it does |
 |---|---|
-| `status [--check]` | The checklist of the current version: docs site, demo shop, sales shop (the Addons upload and the Cloudflare purge are manual, outside the tool). `--check`: also ask the docs site which version it shows. Exit 0 when all are done. |
+| `status [--check]` | The checklist of the current version: docs site, demo shop, sales shop (the Addons upload and the Cloudflare purge are manual, outside the tool). `--check`: also ask the docs site which version it shows, and list the module version per place: the internal test shop (its module table), the demo shop (the last `publish demo`) and the sales shop (whether the update server's sales sync delivered this version's zip). Exit 0 when all are done. |
 | `site` | Builds `dist/docs-site/<module>/`: `index.php` + `readme_<iso>.pdf` of every language (from `docs build`) + `flag-<country>.svg`, the flag shown next to each language. |
 | `docs [--dry-run] [--force] [--no-snapshot]` | Builds the site and uploads it by SFTP to `<DOCS_SITE_SFTP_PATH>/<module>/`, removes stale files there, then checks `<DOCS_SITE_URL>/<module>/index.php`. With `DEMO_SITE_SSH_HOST` set it then rewrites the intro page of the demo shop (`settings intro`), which links the docs site of every module. Afterwards a TransIP VPS snapshot, unless `--no-snapshot`. |
 | `demo [--dry-run] [--force] [--no-snapshot]` | Puts `dist/<module>.zip` in the demo shop (below). Needs the checked zip of the current code (`build` + `validate-zip`), except in CI. Afterwards a VPS snapshot, unless `--no-snapshot`. |
@@ -460,6 +460,25 @@ These run the scripts of the packages of `mono-build-knowledge`: from the module
 | `ps-module ps check [<module-dir>] [--ps-min=X --ps-max=Y]` | Every PrestaShop class, method and hook the module uses exists in its whole range (from `module.spec.json`); deprecations and changed signatures are warnings. Exit 1 on errors. Also in `check`. |
 | `ps-module external check <package>[:<constraint>] [--quick] [--json] [--record=<file> --for=X --used-in=Y]` | The compatibility check B1–B8 of an external package (exit 0 = use, 1 = write our own); `--record` adds the row to the register. |
 | `ps-module external find "<need>"` | The same search as `find --external`. |
+| `ps-module find --pitfalls "<area>" [--limit=N] [--json]` | Searches the pitfalls index (build-pitfalls): the Pitfalls notes of every module, the recipes' Valkuilen and a curated list. |
+
+## Module-Factory (`factory`, `rules`, `make`, `layout`)
+
+The pipeline of `/ps-module` (workspace `docs/factory/README.md`): gates per stage, in order, with stamps on their
+inputs in `<repo>/.factory/`.
+
+| Command | What it does |
+|---|---|
+| `ps-module factory init [--change="<request>"] [--repo=DIR]` | Starts a run for a new module (before the scaffold, with `--repo`) or a change. |
+| `ps-module factory status [--json]` | Every stage: passed, stale or open, and the next one. |
+| `ps-module factory gate <stage>` | Runs the checks of a stage (intake, research, design, build, content, verify, release, retro); stamps it when they pass. |
+| `ps-module factory approve --by=<name> --ref=<message or card>` | Records the person's final approval of the current spec. |
+| `ps-module factory review design\|verify --verdict=approved\|changes [--findings=FILE]` | Records the reviewer agent's verdict on the current design or code. |
+| `ps-module factory wait-package prestashopheaven/<package> <X.Y.Z> [--timeout=S]` | Waits until Packagist has that version (a run that changed a package). |
+| `ps-module factory abandon --reason=<why>` | Ends a dropped run: archives the spec in `docs/ideeen/dropped/`, removes `.factory/` (and an empty new repo). |
+| `ps-module rules validate\|list\|show <ID>\|stage <stage> [--review-only]\|generate --out=FILE [--check]` | The rules registry of `mono-build-rules`. |
+| `ps-module make cqrs [--dry-run]` | Commands, queries, handlers and their bus tags from `.factory/design.json`; never overwrites a file. |
+| `ps-module layout <ps-version> <path> [--selector=<css> ...] [--lang=<iso>] [--fo] [--viewport=...]` | The layout check: opens one page of the module's test shop (back office, or front office with `--fo`) in Playwright, in a language of choice, and reports per selector the number of matches, visibility and box; full-page screenshot and JSON in `.cache/layout/`. Exit 1 when a selector is missing or hidden. |
 
 ## Server scripts
 

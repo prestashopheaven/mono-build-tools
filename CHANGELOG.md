@@ -2,6 +2,12 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.6.0
+
+- `prestashopheaven/build-tools` 1.6.0: `ps-module layout` (the layout check of the verify stage, in a language of
+  choice), `ps-module factory abandon`, and `publish status --check` lists the module version per place (test shop,
+  demo shop, sales shop).
+
 ## 1.5.1
 
 - `prestashopheaven/build-tools` 1.5.1: `ps-module publish` no longer has an Addons step and no longer purges the

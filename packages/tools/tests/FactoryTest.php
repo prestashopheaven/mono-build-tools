@@ -455,6 +455,48 @@ final class FactoryTest extends TestCase
         self::assertStringContainsString('(sales-sync jobs: none)', factory_release_problems(['sales' => ['product' => true, 'jobs' => []]] + $accepted, $sales)[0]);
     }
 
+    public function testAbandonArchivesTheSpecAndRemovesANewRun(): void
+    {
+        $workspace = $this->repo . '/ws';
+        $repo = "$workspace/modules/heaven-vat-checker";
+        mkdir($repo, 0777, true);
+        factory_init($repo, null);
+        mkdir("$repo/.factory/reviews");
+        file_put_contents("$repo/.factory/spec.json", json_encode(self::spec()));
+        file_put_contents("$repo/.factory/reviews/design.json", '{}');
+
+        $archive = factory_abandon($repo, 'George does not want it', null, 1800000000);
+
+        self::assertSame("$workspace/docs/ideeen/dropped/heaven-vat-checker-20270115-080000.json", $archive);
+        $entry = json_decode((string) file_get_contents((string) $archive), true);
+        self::assertSame('George does not want it', $entry['reason'] ?? null);
+        self::assertSame('heavenvatchecker', $entry['spec']['module_name'] ?? null);
+        self::assertDirectoryDoesNotExist($repo, 'the empty new repo is removed');
+    }
+
+    public function testAbandonOfAChangeKeepsTheModule(): void
+    {
+        mkdir($this->repo . '/heavenfoo');
+        file_put_contents($this->repo . '/heavenfoo/heavenfoo.php', '<?php');
+        factory_init($this->repo, 'A fix');
+
+        self::assertNull(factory_abandon($this->repo, 'not needed'));
+        self::assertDirectoryDoesNotExist($this->repo . '/.factory');
+        self::assertFileExists($this->repo . '/heavenfoo/heavenfoo.php');
+    }
+
+    public function testAbandonNeedsAReasonAndARun(): void
+    {
+        try {
+            factory_abandon($this->repo, ' ');
+            self::fail('a reason is needed');
+        } catch (InvalidArgumentException $e) {
+            self::assertStringStartsWith('Usage:', $e->getMessage());
+        }
+        $this->expectException(RuntimeException::class);
+        factory_abandon($this->repo, 'why');
+    }
+
     public function testTheRepositoryIsFoundFromASubfolderOrGiven(): void
     {
         mkdir($this->repo . '/.factory');

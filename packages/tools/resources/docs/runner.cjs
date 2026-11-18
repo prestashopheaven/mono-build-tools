@@ -240,6 +240,23 @@ async function screenshots(browser, task, results) {
                 }
                 await page.waitForTimeout(shot.delay || 600);
                 fs.mkdirSync(path.dirname(shot.out), { recursive: true });
+                // The layout check (ps-module layout): count, visibility and box of every selector in shot.measure.
+                if (Array.isArray(shot.measure) && isHtml) {
+                    result.measure = [];
+                    for (const selector of shot.measure) {
+                        const locator = page.locator(selector);
+                        const count = await locator.count();
+                        const first = count > 0 ? locator.first() : null;
+                        const box = first ? await first.boundingBox() : null;
+                        result.measure.push({
+                            selector,
+                            count,
+                            visible: first ? await first.isVisible() : false,
+                            box: box ? { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) } : null,
+                            text: first ? ((await first.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '',
+                        });
+                    }
+                }
                 if (shot.selector) {
                     const locator = page.locator(shot.selector).first();
                     if ((await locator.count()) === 0) {

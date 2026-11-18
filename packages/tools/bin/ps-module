@@ -73,6 +73,8 @@
  *   build-external)
  *   ps-module factory init|status|gate <stage>|approve|review|wait-package
  *                                    the Module-Factory pipeline of this repository (src/factory.php)
+ *   ps-module layout <ps-version> <path> [--selector=<css> ...] [--lang=<iso>] [--fo]
+ *                                    the layout check: count, visibility and box of elements on a shop page (src/layout.php)
  *   ps-module rules validate|list|show <ID>|stage <stage>|generate
  *                                    the rules registry (build-rules-core of mono-build-rules)
  *
@@ -206,6 +208,11 @@ switch ($command) {
         // Generators of the Module-Factory from .factory/design.json (src/make.php).
         requireModule($moduleDir);
         exit(script('make.php', array_merge([(string) $repoDir, (string) $moduleDir], $args)));
+
+    case 'layout':
+        // The layout check of the verify stage: elements of one shop page, in a language of choice (src/layout.php).
+        requireModule($moduleDir);
+        exit(script('layout.php', array_merge([(string) $repoDir, (string) $moduleDir], $args)));
 
     case 'rules':
         // The rules registry of the Module-Factory (build-rules-core of mono-build-rules).

@@ -383,9 +383,79 @@ function publish_cmd_status(array $ctx, bool $check): int
         $live = publish_live_version(publish_docs_url($ctx));
         echo '  Live docs site:   ' . ($live === null ? 'not reachable or no module-version' : "shows $live") . ' (' . publish_docs_url($ctx) . ")\n";
     }
+    if ($check) {
+        echo "Version of {$ctx['module']} per shop (this repo has {$ctx['version']}):\n";
+        foreach (publish_versions_per_shop($ctx) as $label => $version) {
+            printf("  %-17s %s\n", $label, $version);
+        }
+    }
     echo $open === 0 ? "All published.\n" : "$open step(s) open.\n";
 
     return $open === 0 ? 0 : 1;
+}
+
+/**
+ * Which version of the module each place has, so a report from an older version is recognised (proposal of the
+ * Cart Journey 1.4.1 pilot): the internal test shop (the module table of the running psh-test container), the demo
+ * shop (the newest version `publish demo` recorded), and the sales shop (whether the update server's sales sync
+ * delivered the zip of this version). Each answer says when it could not be read.
+ *
+ * @param array<string, mixed> $ctx
+ * @param callable(list<string>): array{0: int, 1: string} $exec runs a command (tests pass their own)
+ * @param callable(string, string): array<string, mixed> $releaseStatus factory_release_status() (tests pass their own)
+ *
+ * @return array<string, string>
+ */
+function publish_versions_per_shop(array $ctx, ?callable $exec = null, ?callable $releaseStatus = null): array
+{
+    $exec ??= static function (array $command): array {
+        $out = [];
+        exec(implode(' ', array_map('escapeshellarg', $command)) . ' 2>&1', $out, $code);
+
+        return [$code, implode("\n", $out)];
+    };
+    if ($releaseStatus === null) {
+        require_once __DIR__ . '/factory.php';
+        $releaseStatus = 'factory_release_status';
+    }
+    $module = (string) $ctx['module'];
+    $versions = [];
+
+    [$code, $out] = $exec(['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.project=psh-test', '--filter', 'label=com.docker.compose.service=prestashop']);
+    $container = $code === 0 ? trim((string) strtok($out, "\n"), " \n\r\t\v\0") : '';
+    if ($container === '') {
+        $versions['Internal test shop'] = 'not running';
+    } else {
+        [$code, $out] = $exec(['docker', 'exec', '-u', 'www-data', $container, 'php', '-r', 'require "/var/www/html/config/config.inc.php"; echo "V=" . Db::getInstance()->getValue("SELECT version FROM " . _DB_PREFIX_ . "module WHERE name = \'' . $module . '\'");']);
+        $versions['Internal test shop'] = $code === 0 && preg_match('/V=(\S*)/', $out, $m) === 1 ? ($m[1] !== '' ? $m[1] : 'not installed') : 'could not be read';
+    }
+
+    $demo = '';
+    foreach (glob($ctx['repo'] . '/.cache/publish/*.json') ?: [] as $file) {
+        $data = json_decode((string) file_get_contents($file), true);
+        if (is_array($data) && is_array($data['demo'] ?? null)) {
+            $version = basename($file, '.json');
+            if ($demo === '' || version_compare($version, $demo, '>')) {
+                $demo = $version;
+            }
+        }
+    }
+    $versions['Demo shop'] = $demo !== '' ? "$demo (last publish demo)" : 'not published from this repo';
+
+    $status = $releaseStatus($module, (string) $ctx['version']);
+    if (isset($status['error'])) {
+        $versions['Sales shop'] = 'unknown: ' . $status['error'];
+    } else {
+        $done = false;
+        foreach ((array) ($status['sales']['jobs'] ?? []) as $job) {
+            $done = $done || (is_array($job) && ($job['status'] ?? '') === 'done');
+        }
+        $versions['Sales shop'] = empty($status['sales']['product'])
+            ? 'no product'
+            : ($done ? "{$ctx['version']} (zip delivered by the sales sync)" : "not {$ctx['version']} yet (sales sync not done)");
+    }
+
+    return $versions;
 }
 
 /**

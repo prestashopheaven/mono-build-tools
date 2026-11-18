@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0] - 2026-11-18
+
+### Nieuw
+- `ps-module layout <ps-versie> <pad> [--selector=<css> ...] [--lang=<iso>] [--fo]` (`src/layout.php`): opent één pagina
+  van de testwinkel van de module in Playwright (de docs-tools-container), in een taal naar keuze, en meldt per selector
+  het aantal treffers, of het eerste element zichtbaar is en zijn positie; screenshot en JSON in `.cache/layout/`.
+  Exit 1 als een selector ontbreekt of verborgen is. De runner (`resources/docs/runner.cjs`) kan daarvoor per shot
+  `measure` meten.
+- `ps-module factory abandon --reason=...`: beëindigt een gestopte run, archiveert de spec in
+  `docs/ideeen/dropped/` en verwijdert `.factory/` (en een lege nieuwe repo-map).
+- `publish status --check` toont de moduleversie per plek: de interne testwinkel, de demowinkel (laatste
+  `publish demo`) en de verkoopwinkel (zip geleverd door de sales sync van de update-server).
+
 ## [1.5.1] - 2026-11-18
 
 ### Verwijderd
