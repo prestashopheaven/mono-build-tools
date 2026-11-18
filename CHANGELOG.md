@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.5.0
+
+- `prestashopheaven/build-tools` 1.5.0: the CPU guard is removed (George, 2026-11-18): no waiting for the CPU load, no
+  one-shop-stack-at-a-time lock, no CPU limits per container, PHPStan with its own number of workers again.
+
 ## 1.4.1
 
 - `prestashopheaven/build-tools` 1.4.1: the design gate accepts empty lists (a change that adds no command, query,

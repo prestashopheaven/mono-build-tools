@@ -43,7 +43,6 @@ require_once __DIR__ . '/verbose.php';
 require_once __DIR__ . '/shop-port.php';
 require_once __DIR__ . '/ps-multistore.php';
 require_once __DIR__ . '/lock.php';
-require_once __DIR__ . '/cpu.php';
 
 $repoRoot = dod_repo_dir((string) getcwd());
 if ($repoRoot === null) {
@@ -81,11 +80,6 @@ ps_vlog('testing.json: module ' . $module . ', versions ' . implode(', ', (array
 if (!in_array($command, ['doctor', 'help'], true)) {
     try {
         ps_lock('shops-' . $module, "shops $command " . implode(' ', $args), ROOT);
-        // CPU guard (F9): one test-shop stack at a time on this PC, over every module and session. Stopping shops
-        // never waits: it frees the CPU.
-        if ($command !== 'down') {
-            ps_lock('shop-stack', "shops $command " . implode(' ', $args) . " ($module)", ROOT);
-        }
     } catch (RuntimeException $e) {
         fail($e->getMessage());
     }
@@ -206,12 +200,6 @@ final class Shop
         if ($other !== '') {
             fail("Port {$this->port} is already used by $other. Give this module its own range (testing.json > base_port, "
                 . 'ports base_port + 100 * major + 10 * minor + patch), or stop that container.');
-        }
-        // CPU guard (F9): start the stack only while the PC is below the start limit (cpu.php).
-        try {
-            ps_cpu_wait("the PrestaShop {$this->version} test shop");
-        } catch (RuntimeException $e) {
-            fail($e->getMessage());
         }
         $this->compose('up -d', true);
         out('Waiting for the PrestaShop installation (first run downloads the image; can take several minutes)...');
@@ -572,8 +560,6 @@ final class Shop
         putenv('PS_VERSION=' . $this->version);
         putenv('PS_PORT=' . $this->port);
         putenv('DB_IMAGE=' . ($this->config['db_image'] ?? 'mysql:8.0'));
-        // CPU guard (F9): every container gets a CPU limit (compose.yml).
-        putenv('PS_SHOP_CPUS=' . ps_cpu_shop_cpus());
 
         return 'docker compose -p ' . escapeshellarg($this->project) . ' -f ' . escapeshellarg(COMPOSE_FILE) . ' ' . $args;
     }

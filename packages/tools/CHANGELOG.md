@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0] - 2026-11-18
+
+### Verwijderd
+- De CPU-bewaking (`src/cpu.php`, op verzoek van George): geen wachten op de CPU-belasting voor testwinkels en PHPStan,
+  geen lock `shop-stack` (testwinkels van verschillende modules draaien weer naast elkaar), geen `cpus` per container,
+  PHPStan weer met zijn eigen aantal workers. De instellingen `PS_MODULE_CPU_*` en `PS_MODULE_SHOP_CPUS` doen niets meer.
+
 ## [1.4.1] - 2026-11-18
 
 ### Opgelost

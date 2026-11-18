@@ -3,8 +3,6 @@
 services:
   db:
     image: ${DB_IMAGE:-mysql:8.0}
-    # CPU guard (F9): limited CPUs per container, so a test shop never takes the whole PC.
-    cpus: 1
     environment:
       MYSQL_ROOT_PASSWORD: prestashop
       MYSQL_DATABASE: prestashop
@@ -18,7 +16,6 @@ services:
 
   prestashop:
     image: prestashop/prestashop:${PS_VERSION:?set PS_VERSION}
-    cpus: ${PS_SHOP_CPUS:-2}
     depends_on:
       db:
         condition: service_healthy
