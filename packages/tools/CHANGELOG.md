@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.1] - 2026-11-18
+
+- De wijziging van 1.6.2 (hieronder), opnieuw uitgebracht boven 1.7.0: tag v1.6.2 kwam na v1.7.0, dus Composer koos 1.7.0 zonder deze fix.
+
+### Opgelost
+- Multistore-ronde, "configuration page per shop context": ook een `<input type="number">` is een kandidaat-veld (met
+  de numerieke markeerwaarde). Een formulier met alleen getalvelden en één e-mailveld (`heavenipriskdetector`) had
+  anders geen veld dat de markeerwaarde aanneemt.
+
 ## [1.7.0] - 2026-11-18
 
 ### Toegevoegd
@@ -12,13 +21,6 @@
 - `ps-module queue` (submit, status, wait, result, list, cancel, set, pools) en `ps-module instance` (status,
   enable, disable, template, down).
 - `ps_lock_at()` in `lock.php`: locks in een eigen map zonder `PS_MODULE_LOCK_DIR` van het proces te veranderen.
-
-## [1.6.2] - 2026-11-18
-
-### Opgelost
-- Multistore-ronde, "configuration page per shop context": ook een `<input type="number">` is een kandidaat-veld (met
-  de numerieke markeerwaarde). Een formulier met alleen getalvelden en één e-mailveld (`heavenipriskdetector`) had
-  anders geen veld dat de markeerwaarde aanneemt.
 
 ## [1.6.1] - 2026-11-18
 

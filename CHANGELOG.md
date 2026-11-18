@@ -2,6 +2,12 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.7.1
+
+- Re-release of the 1.6.2 change above 1.7.0 (v1.6.2 was tagged after v1.7.0, so Composer picked 1.7.0 without it).
+
+- `prestashopheaven/build-tools` 1.6.2: the multistore form check also tries number inputs (with the numeric marker).
+
 ## 1.7.0
 
 - `prestashopheaven/build-tools` 1.7.0: shared shop and docs instances with a job queue (workspace
@@ -10,10 +16,6 @@ All packages of this monorepo share one version. Per package details: its own `C
   (at most N per pool, one per module, `testing.json > exclusive` alone) and run on a slot of one shared instance,
   made from a template per PrestaShop version; the docs use a template with their languages installed. Off by default
   and never in CI.
-
-## 1.6.2
-
-- `prestashopheaven/build-tools` 1.6.2: the multistore form check also tries number inputs (with the numeric marker).
 
 ## 1.6.1
 
