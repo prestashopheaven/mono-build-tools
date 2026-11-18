@@ -2,6 +2,15 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.7.0
+
+- `prestashopheaven/build-tools` 1.7.0: shared shop and docs instances with a job queue (workspace
+  `docs/factory/queue.md`): `ps-module instance` (status, enable/disable, template, down) and `ps-module queue`. With
+  the instances on, `shops run|up|upgrade|multistore|integration|behat` and the docs screenshots wait for their turn
+  (at most N per pool, one per module, `testing.json > exclusive` alone) and run on a slot of one shared instance,
+  made from a template per PrestaShop version; the docs use a template with their languages installed. Off by default
+  and never in CI.
+
 ## 1.6.1
 
 - `prestashopheaven/build-tools` 1.6.1: the multistore round tries the text fields of the settings form in order until

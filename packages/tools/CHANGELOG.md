@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0] - 2026-11-18
+
+### Toegevoegd
+- Gedeelde instances voor winkeltests en docs met een wachtrij (`src/instance.php`, `src/queue.php`; werkruimte
+  `docs/factory/queue.md`). `ps-module instance enable|disable` zet ze aan of uit (standaard uit, nooit in CI;
+  `PS_TEST_INSTANCE=off|shops|docs|all` per commando). Aan: zware `shops`-commando's en de docs-screenshots wachten
+  op hun beurt (lease: max N per pool, één per module, `testing.json > exclusive` alleen) en draaien op een slot
+  `psh-<pool>-s<n>` van één gedeelde MySQL, gemaakt uit een sjabloon per PrestaShop-versie (9 s in plaats van een
+  installatie van 41 s). De docs gebruiken een sjabloon met hun talen al geïnstalleerd.
+- `ps-module queue` (submit, status, wait, result, list, cancel, set, pools) en `ps-module instance` (status,
+  enable, disable, template, down).
+- `ps_lock_at()` in `lock.php`: locks in een eigen map zonder `PS_MODULE_LOCK_DIR` van het proces te veranderen.
+
 ## [1.6.1] - 2026-11-18
 
 ### Opgelost

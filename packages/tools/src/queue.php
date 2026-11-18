@@ -13,8 +13,9 @@
  */
 
 /*
- * PROTOTYPE (not wired into the Factory yet; workspace docs/factory/queue.md): the job queue for the heavy work of
- * module threads (docs builds and shop tests). One queue per pool ("docs", "shops"), one worker process per pool that
+ * The job queue for the heavy work of module threads (workspace docs/factory/queue.md), used with the shared
+ * instances (instance.php): heavy commands take a lease with queue_lease() and wait for their turn; work can also be
+ * handed off as a job (docs builds and shop tests). One queue per pool ("docs", "shops"), one worker process per pool that
  * runs at most `max` jobs at once (default 3), never two jobs of the same module at once, and an exclusive job alone.
  * Module threads submit a job and then wait: they ask the queue for the status and fetch the result when it is done.
  *
