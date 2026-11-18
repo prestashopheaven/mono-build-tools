@@ -363,7 +363,19 @@ function factory_stage_problems(string $repoDir, string $stage): array
             if ($design === null) {
                 return ['.factory/design.json is missing or no JSON object.'];
             }
-            $problems = factory_required_fields($design, FACTORY_DESIGN_FIELDS, 'design.json');
+            // Every field must be there (an empty list is a decision: "this change adds no table"); what must not be
+            // empty: covers always, and the bounded contexts of a new module. A change (a CSS fix) may add no
+            // command, query, hook, setting or table.
+            $isChange = (factory_state($repoDir)['path'] ?? 'new') === 'change';
+            $problems = factory_required_fields($design, $isChange ? ['covers'] : ['contexts', 'covers'], 'design.json');
+            foreach (FACTORY_DESIGN_FIELDS as $field) {
+                if (!array_key_exists($field, $design)) {
+                    $problems[] = "design.json: $field is missing (write [] when the design adds none).";
+                } elseif (!is_array($design[$field])) {
+                    $problems[] = "design.json: $field must be a list or an object.";
+                }
+            }
+            $problems = array_values(array_unique($problems));
             $covered = is_array($design['covers'] ?? null) ? array_keys($design['covers']) : [];
             foreach (factory_need_ids($spec ?? []) as $id) {
                 if (!in_array($id, $covered, true)) {

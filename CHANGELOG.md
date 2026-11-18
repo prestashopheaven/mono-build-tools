@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.4.1
+
+- `prestashopheaven/build-tools` 1.4.1: the design gate accepts empty lists (a change that adds no command, query,
+  hook, setting or table); every field must still be present, and `covers` (plus `contexts` for a new module) filled.
+
 ## 1.4.0
 
 - `prestashopheaven/build-tools` 1.4.0: the release gate asks the update server whether the version is accepted and

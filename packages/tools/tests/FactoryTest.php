@@ -250,6 +250,35 @@ final class FactoryTest extends TestCase
         self::assertSame('stale', factory_overview($this->repo, (array) factory_state($this->repo))['stages']['design']);
     }
 
+    public function testAChangeDesignMayAddNothingButMustNameEveryField(): void
+    {
+        factory_init($this->repo, 'Fix the timeline CSS in RTL');
+        $this->write('spec.json', self::spec());
+        $design = ['contexts' => [], 'commands' => [], 'queries' => [], 'hooks' => [], 'configuration' => [], 'tables' => [], 'covers' => ['N1' => ['views/css/timeline.css'], 'N2' => ['views/css/timeline.css']]];
+        $this->write('design.json', $design);
+        factory_review($this->repo, 'design', 'approved', []);
+
+        self::assertSame([], factory_stage_problems($this->repo, 'design'));
+
+        unset($design['tables']);
+        $design['hooks'] = 'none';
+        $this->write('design.json', $design);
+        factory_review($this->repo, 'design', 'approved', []);
+        $problems = factory_stage_problems($this->repo, 'design');
+        self::assertContains('design.json: tables is missing (write [] when the design adds none).', $problems);
+        self::assertContains('design.json: hooks must be a list or an object.', $problems);
+    }
+
+    public function testANewModuleDesignNeedsItsContexts(): void
+    {
+        factory_init($this->repo, null);
+        $this->write('spec.json', self::spec());
+        $this->write('design.json', ['contexts' => [], 'commands' => [], 'queries' => [], 'hooks' => [], 'configuration' => [], 'tables' => [], 'covers' => ['N1' => ['x'], 'N2' => ['y']]]);
+        factory_review($this->repo, 'design', 'approved', []);
+
+        self::assertSame(['design.json: contexts is missing or empty.'], factory_stage_problems($this->repo, 'design'));
+    }
+
     public function testReviewChangesNeedsFindingsAndOnlyDesignOrVerify(): void
     {
         factory_init($this->repo, null);

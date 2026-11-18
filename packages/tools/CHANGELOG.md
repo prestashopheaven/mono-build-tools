@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1] - 2026-11-18
+
+### Opgelost
+- Design-gate: een lege lijst is een keuze ("deze wijziging voegt geen tabel toe"). Elk veld van `design.json` moet er
+  staan; alleen `covers` (en bij een nieuwe module `contexts`) mag niet leeg zijn. Gevonden in de pilot Cart Journey
+  1.4.1 (alleen CSS).
+
 ## [1.4.0] - 2026-11-18
 
 ### Nieuw
