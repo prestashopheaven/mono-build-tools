@@ -472,7 +472,8 @@ function instance_slot_up(string $dir, string $pool, int $index, string $version
     if ($code !== 0) {
         throw new RuntimeException("Starting the slot $name failed: $out");
     }
-    $fix = "\$f = '/var/www/html/app/config/parameters.php'; \$t = file_get_contents(\$f); \$t = preg_replace(\"/'database_name' => '[^']*'/\", \"'database_name' => '$database'\", \$t); file_put_contents(\$f, \$t);";
+    // The database and its server: a template made in the other pool still points at that pool's MySQL.
+    $fix = "\$f = '/var/www/html/app/config/parameters.php'; \$t = file_get_contents(\$f); \$t = preg_replace(\"/'database_name' => '[^']*'/\", \"'database_name' => '$database'\", \$t); \$t = preg_replace(\"/'database_host' => '[^']*'/\", \"'database_host' => 'psh-$pool-db'\", \$t); file_put_contents(\$f, \$t);";
     [$code, $out] = instance_run(['docker', 'exec', '-u', 'root', $name, 'php', '-r', $fix]);
     if ($code !== 0) {
         throw new RuntimeException("Pointing the slot at its database failed: $out");
