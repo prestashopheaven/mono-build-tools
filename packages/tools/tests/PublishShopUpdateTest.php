@@ -128,7 +128,7 @@ final class PublishShopUpdateTest extends TestCase
         self::assertSame(['1' => '<p>Emails when a price drops.</p>', '2' => '<p>Mails als een prijs daalt.</p>', '3' => '<p>Emails when a price drops.</p>'], $this->texts($product['lang']['description_short']));
         self::assertSame("<p>New <strong>version</strong>.</p>\n<p>Second paragraph.</p>\n<ul>\n<li>Double opt-in</li>\n</ul>\n", $product['lang']['description']['1']);
         self::assertSame("<p>Nieuwe versie.</p>\n<ul>\n<li>Dubbele opt-in</li>\n</ul>\n", $product['lang']['description']['2']);
-        self::assertSame(['1' => 'price-drop-alerts', '2' => 'prijsdalingsmeldingen', '3' => 'price-drop-alerts'], $this->texts($product['lang']['link_rewrite']));
+        self::assertSame(['1' => 'old-name', '2' => 'old-name', '3' => 'old-name'], $this->texts($product['lang']['link_rewrite']), 'the friendly URL of an existing product never changes');
         self::assertSame('Prijsdalingsmeldingen', $product['lang']['meta_title']['2']);
         self::assertSame('Mails als een prijs daalt.', $product['lang']['meta_description']['2']);
     }
@@ -146,7 +146,7 @@ final class PublishShopUpdateTest extends TestCase
         self::assertSame([102, 103, 104], array_keys($images), 'the old images #100 and #101 are removed');
         self::assertTrue($images[102]['cover']);
         self::assertFalse($images[103]['cover'] || $images[104]['cover']);
-        $order = array_values(array_filter($state['log'], static fn (string $l): bool => !str_starts_with($l, 'GET')));
+        $order = array_values(array_filter($state['log'], static fn (string $l): bool => !str_starts_with($l, 'GET') && (str_contains($l, 'images/products') || str_contains($l, ' products/'))));
         self::assertSame(['POST images/products/12', 'POST images/products/12', 'POST images/products/12', 'PUT products/12', 'DELETE images/products/12/100', 'DELETE images/products/12/101', 'PUT products/12'], $order, 'upload, texts, remove the old images, then the cover');
     }
 
@@ -157,21 +157,88 @@ final class PublishShopUpdateTest extends TestCase
     {
         $before = $this->state()['products']['12'];
 
-        $this->runUpdate();
+        $this->runUpdate(false, ['texts', 'images', 'features', 'category', 'changelog', 'extra']);
 
         $after = $this->state()['products']['12'];
         self::assertSame($before['fields'], $after['fields'], 'price, tax rule, category, active state, visibility, reference ... as they were');
         self::assertSame($before['categories'], $after['categories']);
         self::assertSame($before['stock'], $after['stock']);
-        self::assertSame([['id' => '9', 'id_feature_value' => '90'], ['id' => '5', 'id_feature_value' => '50']], $after['features'], 'other features stay, Multistore: No becomes Yes');
+        self::assertSame(['id' => '9', 'id_feature_value' => '90'], $after['features'][0], 'other features stay');
+        self::assertNotContains('5', array_column($after['features'], 'id'), 'the plain feature Multistore is taken off');
+        $names = [];
+        foreach ($after['features'] as $feature) {
+            $names[] = $this->state()['features'][$feature['id']]['name'][0]['value'] ?? '?';
+        }
+        self::assertSame(['Compatibility', 'PrestaShop versions', 'Multistore compatible', 'Supported languages', 'Supported languages', 'Has overrides'], $names);
         foreach ($this->state()['puts'] as $put) {
             self::assertStringNotContainsString('<manufacturer_name', $put);
             self::assertStringNotContainsString('<position_in_category', $put);
             self::assertStringNotContainsString('<new>', $put);
-            self::assertStringNotContainsString('<categories', $put, 'associations other than the features are left alone');
+            self::assertStringNotContainsString('<categories', $put, 'the categories of a product that has them are left alone');
             self::assertStringNotContainsString('<product_bundle', $put);
             self::assertStringNotContainsString('<stock_availables', $put);
         }
+    }
+
+    /**
+     * A product that still has the technical name as reference gets the short one (H + initials, unique).
+     */
+    public function testTheOldTechnicalReferenceBecomesTheShortOne(): void
+    {
+        $this->runUpdate(false, ['reference']);
+
+        $reference = $this->state()['products']['12']['fields']['reference'];
+        self::assertSame(publish_shop_reference(basename($this->repo), []), $reference);
+        self::assertStringStartsWith('H', $reference);
+    }
+
+    /**
+     * The changelog follows CHANGELOG.md: a new version is added, a changed one updated, the English text in every
+     * shop language; a version that is not in CHANGELOG.md stays. Without Product Changelog the part is skipped.
+     */
+    public function testTheChangelogIsKeptInSync(): void
+    {
+        file_put_contents("$this->repo/CHANGELOG.md", "# Changelog\n\n## [1.1.0] - 2026-11-19\n\nPrice alerts for combinations.\n\n### Toegevoegd\n- Intern.\n\n## [1.0.0] - 2026-10-21\n\nFirst release.\n");
+        [$code, $output] = $this->runUpdate(false, ['changelog']);
+        self::assertSame(0, $code);
+        self::assertStringContainsString('skipped: the shop has no heavenproductchangelog_entries', $output);
+
+        $state = $this->shopState();
+        $state['changelog_module'] = true;
+        $state['changelog'] = [
+            '1' => ['id' => '1', 'id_product' => '12', 'version' => '1.0.0', 'date' => '2026-10-21', 'text' => [['id' => '1', 'value' => 'Old text']]],
+            '2' => ['id' => '2', 'id_product' => '12', 'version' => '0.9.0', 'date' => '2026-01-01', 'text' => [['id' => '1', 'value' => 'Made by hand']]],
+        ];
+        $this->writeState($state);
+
+        [$code, $output] = $this->runUpdate(false, ['changelog']);
+
+        $entries = array_column($this->state()['changelog'], null, 'version');
+        self::assertSame(0, $code);
+        self::assertStringContainsString('changelog: update 1.0.0, add 1.1.0', $output);
+        self::assertSame([['id' => '1', 'value' => 'First release.'], ['id' => '2', 'value' => 'First release.'], ['id' => '3', 'value' => 'First release.']], $entries['1.0.0']['text']);
+        self::assertSame(['12', '2026-11-19', 'Price alerts for combinations.'], [$entries['1.1.0']['id_product'], $entries['1.1.0']['date'], $entries['1.1.0']['text'][2]['value']]);
+        self::assertSame('Made by hand', $entries['0.9.0']['text'][0]['value']);
+
+        [, $output] = $this->runUpdate(false, ['changelog']);
+        self::assertStringContainsString('changelog: already in sync', $output);
+    }
+
+    /**
+     * --only=images touches only the images: texts and features stay.
+     */
+    public function testOnlyTheChosenPartsAreWritten(): void
+    {
+        $before = $this->state()['products']['12'];
+
+        [$code, $output] = $this->runUpdate(false, ['images']);
+
+        $after = $this->state()['products']['12'];
+        self::assertSame(0, $code);
+        self::assertSame($before['lang'], $after['lang']);
+        self::assertSame($before['features'], $after['features']);
+        self::assertStringContainsString('parts: images', $output);
+        self::assertCount(3, array_filter($this->state()['images'], static fn (array $i): bool => $i['product'] === '12'));
     }
 
     /**
@@ -183,7 +250,7 @@ final class PublishShopUpdateTest extends TestCase
 
         $recorded = json_decode((string) file_get_contents("$this->repo/.cache/publish/1.1.0.json"), true);
         self::assertStringContainsString('product #12 updated', $recorded['shop']['note']);
-        self::assertStringContainsString('Virtual product tab: replace the file', $output);
+        self::assertStringContainsString('The zip follows through PrestaHaven Sales Sync', $output);
         self::assertStringContainsString('Activate the product when it is ready', $output);
     }
 
@@ -199,7 +266,7 @@ final class PublishShopUpdateTest extends TestCase
         [$code, $output] = $this->runUpdate();
 
         self::assertSame(1, $code);
-        self::assertStringContainsString('no product with reference heavenfoo', $output);
+        self::assertStringContainsString('has no product for heavenfoo', $output);
         self::assertSame([], $this->writes());
     }
 
@@ -277,7 +344,7 @@ final class PublishShopUpdateTest extends TestCase
             $this->runUpdate();
             self::fail('a refused PUT must stop the update');
         } catch (RuntimeException $e) {
-            self::assertStringContainsString('the shop refused the new texts', $e->getMessage());
+            self::assertStringContainsString('the shop refused the product changes', $e->getMessage());
         }
 
         $after = $this->state();
@@ -434,12 +501,12 @@ final class PublishShopUpdateTest extends TestCase
      *
      * @return array{0: int, 1: string}
      */
-    private function runUpdate(bool $dryRun = false): array
+    private function runUpdate(bool $dryRun = false, array $parts = PUBLISH_SHOP_PARTS): array
     {
         $ctx = publish_context($this->repo, $this->repo . '/heavenfoo');
         ob_start();
         try {
-            $code = publish_cmd_shop($ctx, $dryRun, false, true);
+            $code = publish_cmd_shop($ctx, $dryRun, false, true, $parts);
         } finally {
             $output = (string) ob_get_clean();
         }

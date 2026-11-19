@@ -319,16 +319,24 @@ On a failure, only the module folder and the database go back to how they were b
   - virtual product, category `SALES_SHOP_CATEGORY_ID` (2), tax rule `SALES_SHOP_TAX_RULES_GROUP_ID` (none);
   - images: `docs/marketing/cover-1000.png` (the cover), then `docs/framed/en/<id>.png` in the order of
     `docs.json > screenshots`;
-  - features from `resources/publish/shop-features.json` (Multistore: Yes); an existing feature or value with the same
-    name in any language is reused.
+  - the theme features (PrestaShop versions, Multistore compatible, Supported languages, Has overrides, Demo frontend
+    and backend), a short unique reference (H + initials: HPDA), the category, the changelog and the theme extra fields
+    (see `--update`); an existing feature or value with the same name in any language is reused.
 - **Languages:** every language installed in the shop. It gets the module's texts in that language (matched on
   PrestaShop's iso code, `si`/`vn` too, else on the language code: `pt-br` gets `pt`), otherwise English.
-- **By hand afterwards:** the zip in the Virtual product tab (PrestaShop has no API for virtual product files), the tax
-  rule, stock, and activating the product.
+- **By hand afterwards:** the tax rule, stock and activating the product. The zip follows through PrestaHaven Sales
+  Sync (update server).
 - **`--update`: a new version of an existing product.** Finds the product by its reference (none: exit 1, run
   without `--update` first) and replaces what comes from the module repository; nothing else changes.
-  - Texts: name, short description, description, meta title, meta description and friendly URL in every shop
-    language, built exactly as on creation. A changed name gives a new friendly URL (no redirect from the old one).
+  - Parts (`--only=texts,images,features,reference,category,changelog,extra`, default all; `--all` for every module of
+    the workspace): features as on creation (the plain "Multistore" feature goes); reference only when it is still the
+    technical name; category only when the product is in no category below Home (`docs.json > sales.category`, or
+    `sales.new_category` with names and SEO texts per language); changelog from the English lines under each version of
+    `CHANGELOG.md`, in every language (Product Changelog 1.4.0+, `heavenproductchangelog_entries`); extra fields
+    Features (the <ul> list, then out of the description) and documentation link (heaventhemefields 1.7.0+,
+    `heaventhemefields_products`). Only what differs or is empty is written.
+  - Texts: name, short description, description, meta title and meta description in every shop language, built exactly
+    as on creation. The friendly URL of an existing product never changes.
   - Images: the new set is uploaded first (cover, then the screenshots in `docs.json` order), then the texts are
     saved, then the old images are removed, and then the first new image is made the cover. A failed upload or a
     refused save removes the images of that run again: the product stays as it was. An old image that cannot be

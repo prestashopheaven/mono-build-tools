@@ -198,6 +198,36 @@ function fake_ws_route(array &$state, string $method, array $segments): void
 
         return;
     }
+    // Product Changelog 1.4.0 (state changelog: list of entries), when installed (state changelog_module).
+    if ($resource === 'heavenproductchangelog_entries' && !empty($state['changelog_module'])) {
+        $entries = (array) ($state['changelog'] ?? []);
+        if ($method === 'GET') {
+            $product = (string) ($_GET['filter']['id_product'] ?? '');
+            $product = trim($product, '[]');
+            fake_ws_json(['heavenproductchangelog_entries' => array_values(array_filter($entries, static fn (array $e): bool => $product === '' || (string) $e['id_product'] === $product))]);
+
+            return;
+        }
+        $xml = simplexml_load_string((string) file_get_contents('php://input'));
+        $node = $xml->heavenproductchangelog_entry;
+        $text = [];
+        foreach ($node->text->language as $language) {
+            $text[] = ['id' => (string) $language['id'], 'value' => (string) $language];
+        }
+        if ($method === 'POST') {
+            $id = (string) (count($entries) + 1);
+            $state['changelog'][$id] = ['id' => $id, 'id_product' => (string) $node->id_product, 'version' => (string) $node->version, 'date' => (string) $node->date, 'text' => $text];
+            fake_ws_json(['heavenproductchangelog_entry' => ['id' => (int) $id]]);
+
+            return;
+        }
+        if ($method === 'PUT' && isset($segments[1], $entries[$segments[1]])) {
+            $state['changelog'][$segments[1]] = array_merge($entries[$segments[1]], ['version' => (string) $node->version, 'date' => (string) $node->date, 'text' => $text]);
+            fake_ws_json(['heavenproductchangelog_entry' => ['id' => (int) $segments[1]]]);
+
+            return;
+        }
+    }
     fake_ws_error(405, "$method $resource is not supported by the fake");
 }
 

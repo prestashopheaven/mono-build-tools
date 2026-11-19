@@ -51,19 +51,21 @@
  *                                       `publish docs` and `publish demo` make one after a successful deploy (unless
  *                                       --no-snapshot). The API key is never on the VPS itself.
  *   ps-module publish shop [--dry-run] [--force]
- *                                       the module as a product in the own sales shop (webservice, SALES_SHOP_*), only
- *                                       on command: created once and always INACTIVE, with name, descriptions and
- *                                       features (Multistore: Yes) in every shop language, the cover and the framed
- *                                       English screenshots; an existing product (same reference) is not changed, a
- *                                       product with the same name stops it (--force: create anyway).
- *   ps-module publish shop --update [--dry-run]
- *                                       new version: replaces the texts (every shop language) and the images (new ones
- *                                       uploaded first, cover first, then the old ones removed) of the existing
- *                                       product and makes sure of its features; price, tax rule, categories, active
- *                                       state, stock, virtual file, visibility and reference stay. Exit 1 when there
- *                                       is no product with the module's reference. Needs products PUT, images DELETE.
- *                                       The zip goes in by hand: PrestaShop has no API for virtual product files.
- *                                       Details: src/publish-shop.php
+ *                                       the module as a product in the own sales shop (webservice, SALES_SHOP_*):
+ *                                       created once and always INACTIVE, with name, descriptions, the theme's
+ *                                       features (PrestaShop versions, languages, overrides, demo, Multistore
+ *                                       compatible), a short unique reference (HPDA), its category, the changelog,
+ *                                       the extra fields, the cover and the framed screenshots; an existing product is
+ *                                       not changed, a product with the same name stops it (--force: create anyway).
+ *   ps-module publish shop --update [--only=texts,images,features,reference,category,changelog,extra] [--all]
+ *                         [--dry-run]   brings the existing product up to date, part by part (default: every part;
+ *                                       publish-shop-content.php): texts (never the friendly URL), images (new ones
+ *                                       uploaded first, then the old ones removed), features, reference (only the old
+ *                                       technical one), category (only when it has none below Home), changelog (from
+ *                                       CHANGELOG.md, Product Changelog 1.4.0+) and the theme's extra fields
+ *                                       (heaventhemefields 1.7.0+). Price, tax rule, active state, stock, virtual
+ *                                       file and visibility stay. --all: every module of the workspace. The zip
+ *                                       follows through PrestaHaven Sales Sync. Details: src/publish-shop.php
  *   ps-module publish done shop         record a manual step: dist/<module>.zip is put in the sales shop product by
  *                                       hand. (The Addons upload and the Cloudflare cache purge are George's own manual
  *                                       steps since 2026-11-18: this tool neither runs nor tracks them.)
@@ -174,7 +176,12 @@ function publish_main(array $argv): int
 
                 return $code === 0 && !$dryRun && !in_array('--no-snapshot', $flags, true) ? publish_after_deploy($ctx, 'demo') : $code;
             case 'shop':
-                return publish_cmd_shop($ctx, $dryRun, in_array('--force', $flags, true), in_array('--update', $flags, true));
+                $parts = publish_shop_parts($flags);
+                if (in_array('--all', $flags, true)) {
+                    return publish_cmd_shop_all($ctx, $dryRun, $parts);
+                }
+
+                return publish_cmd_shop($ctx, $dryRun, in_array('--force', $flags, true), in_array('--update', $flags, true), $parts);
             case 'demo-site':
                 return publish_cmd_demo_site($ctx, $args, $dryRun, $flags);
             case 'vps-snapshot':
@@ -299,6 +306,42 @@ function publish_env_lookup_quiet(array $ctx, string $key): void
 }
 
 /**
+ * publish shop --update --all: the update of every module of the workspace that has a sales-shop product (modules/*
+ * with module.spec.json and docs), one after the other, with the same parts. A module without a product is skipped;
+ * a failure of one module is reported and the others go on. Exit 1 when one failed.
+ *
+ * @param array<string, mixed> $ctx the module the command was started in (its workspace is used)
+ * @param string[] $parts
+ */
+function publish_cmd_shop_all(array $ctx, bool $dryRun, array $parts): int
+{
+    $modules = dirname((string) $ctx['repo']);
+    $failed = [];
+    $done = 0;
+    foreach (glob("$modules/*/module.spec.json") ?: [] as $specFile) {
+        $repo = dod_norm(dirname($specFile));
+        $moduleDir = dod_module_dir($repo);
+        if ($moduleDir === null || !is_file("$repo/docs/docs.json")) {
+            continue;
+        }
+        $module = publish_context($repo, dod_norm($moduleDir));
+        echo "\n=== {$module['module']} {$module['version']} ===\n";
+        try {
+            $code = publish_cmd_shop($module, $dryRun, false, true, $parts);
+            if ($code === 0) {
+                ++$done;
+            }
+        } catch (Throwable $e) {
+            $failed[] = $module['module'];
+            fwrite(STDERR, "ps-module publish shop: {$module['module']}: " . publish_mask($e->getMessage()) . "\n");
+        }
+    }
+    echo "\nUpdated: $done product(s)" . ($dryRun ? ' (dry run)' : '') . ($failed === [] ? '' : '; failed: ' . implode(', ', $failed)) . ".\n";
+
+    return $failed === [] ? 0 : 1;
+}
+
+/**
  * What the commands need about the module: paths, version, names and languages.
  *
  * @return array{repo: string, module_dir: string, module: string, version: string, spec: array<string, mixed>, languages: string[], catalog: array<string, array<string, mixed>>, ps_min: string, ps_tested: string}
@@ -366,7 +409,7 @@ function publish_cmd_status(array $ctx, bool $check): int
     $how = [
         'docs' => 'vendor/bin/ps-module publish docs' . (publish_env($ctx, 'DOCS_SITE_SFTP_HOST') === '' ? '   (needs DOCS_SITE_SFTP_* in .env)' : ''),
         'demo' => 'vendor/bin/ps-module publish demo' . (publish_env($ctx, 'DEMO_SITE_SSH_HOST') === '' ? '   (needs DEMO_SITE_SSH_* in .env)' : ''),
-        'shop' => 'vendor/bin/ps-module publish shop (creates the product once, inactive; a later version: publish shop --update for texts and images, put the zip in it by hand, then publish done shop)'
+        'shop' => 'vendor/bin/ps-module publish shop (creates the product once, inactive; a later version: publish shop --update; the zip follows through Sales Sync)'
             . (publish_env($ctx, 'SALES_SHOP_URL') === '' ? '   (needs SALES_SHOP_* in .env)' : ''),
     ];
     $labels = ['docs' => 'Docs site (PDFs)', 'demo' => 'Demo shop', 'shop' => 'Sales shop'];

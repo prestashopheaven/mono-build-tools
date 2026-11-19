@@ -2,6 +2,14 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.9.0
+
+- `prestashopheaven/build-tools` 1.9.0: `publish shop` keeps the whole sales-shop product up to date (George,
+  2026-11-19): the theme features (PrestaShop versions, Multistore compatible, languages, overrides, demo links), a
+  short unique reference (HPDA), the category (suggested, or created from docs.json), the changelog from CHANGELOG.md
+  (Product Changelog 1.4.0) and the theme extra fields (heaventhemefields 1.7.0); `--update --only=<parts>` and
+  `--all`; the friendly URL of an existing product is never changed.
+
 ## 1.8.0
 
 - `prestashopheaven/build-tools` 1.8.0: the Bing IndexNow retro (proposals 2, 3, 5, 6, 7, 14, 15): TST-07 counts only real

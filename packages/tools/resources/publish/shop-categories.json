@@ -1,0 +1,17 @@
+{
+    "_comment": "The sales-shop category (English name of a subcategory of 'All modules') that fits a module's Addons category (docs.json > marketing.category), for `ps-module publish shop`. The first prefix that matches wins, so specific prefixes come first. A module overrides it with docs.json > sales.category (an id or an English name).",
+    "map": {
+        "Store Management › Invoicing & Accounting": "Invoices & Accounting",
+        "Store Design › International & Localization": "International",
+        "Marketing & Conversion › Email & Marketing Automation": "Email & Customer Service",
+        "Customer Communication": "Email & Customer Service",
+        "Traffic & Sales Channels": "SEO & Content",
+        "Marketing & Conversion": "Sales & Conversion",
+        "Payment": "Sales & Conversion",
+        "Shipping & Logistics": "Order Management",
+        "Store Management › Data Synchronization & Update": "Catalog & Products",
+        "Store Management": "Order Management",
+        "Product Management": "Catalog & Products",
+        "Store Design": "Catalog & Products"
+    }
+}

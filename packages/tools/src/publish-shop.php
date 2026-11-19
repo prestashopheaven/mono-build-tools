@@ -40,7 +40,7 @@
  *                        as one frame per shop language (docs/framed/<iso>/<id>.png, English for a language without
  *                        its own), and each image gets its languages and its caption (the frame title, for the cover
  *                        the product name) through that resource
- *   - features           resources/publish/shop-features.json (Multistore: Yes), reused when the shop has them
+ *   - features, reference, category, changelog, extra fields: publish-shop-content.php
  *   - reference          the technical module name: how the command finds the product again
  * Every language installed in the shop gets its texts; a shop language the module has no texts for gets English.
  * The zip of the virtual product stays a manual step: PrestaShop has no API for virtual product files.
@@ -54,6 +54,8 @@
  */
 
 declare(strict_types=1);
+
+require_once __DIR__ . '/publish-shop-content.php';
 
 /**
  * Product fields the webservice returns but refuses on PUT ("not writable", PrestaShop 8 and 9), or that a PUT would
@@ -81,7 +83,7 @@ const PUBLISH_SHOP_IMAGE_LANGUAGES = 'heavenlangimages_images';
  *
  * @param array<string, mixed> $ctx
  */
-function publish_cmd_shop(array $ctx, bool $dryRun, bool $force = false, bool $update = false): int
+function publish_cmd_shop(array $ctx, bool $dryRun, bool $force = false, bool $update = false, array $parts = PUBLISH_SHOP_PARTS): int
 {
     $plan = publish_shop_plan($ctx);
     $url = rtrim(publish_env($ctx, 'SALES_SHOP_URL'), '/');
@@ -100,17 +102,24 @@ function publish_cmd_shop(array $ctx, bool $dryRun, bool $force = false, bool $u
     $ws = ['api' => $url . '/api', 'key' => $key];
     $languages = publish_shop_languages($ws, $ctx);
     if ($update) {
-        return publish_shop_update($ws, $ctx, $plan, $languages, $dryRun);
+        return publish_shop_update($ws, $ctx, $plan, $languages, $dryRun, $parts);
     }
-    $existing = publish_shop_find_product($ws, $ctx['module']);
+    $existing = publish_shop_find_existing($ws, $ctx, $plan);
     if ($existing !== null) {
         echo "{$ctx['module']} is already in the sales shop: product #{$existing['id']} (" . ($existing['active'] ? 'active' : 'inactive') . "). Nothing changed.\n";
-        echo "New version? Replace the file in its Virtual product tab with ../dist/{$ctx['module']}.zip, then: vendor/bin/ps-module publish done shop\n";
         echo "New texts or screenshots? vendor/bin/ps-module publish shop --update (try --dry-run first)\n";
 
         return 0;
     }
     $fields = publish_shop_schema($ws);
+    // A short unique reference, and the module's category (Home + All modules + its own).
+    $plan['reference'] = publish_shop_reference(basename($ctx['repo']), publish_shop_references($ws));
+    [$all, $children] = publish_shop_category_tree($ws, $languages);
+    $chosen = $dryRun ? (publish_shop_suggest_category(publish_json($ctx['repo'] . '/docs/docs.json'), $children) ?? 0) : publish_shop_choose_category($ws, $ctx, $all, $children, $languages, false);
+    if ($chosen > 0) {
+        $category = $chosen;
+        $plan['categories'] = array_values(array_unique([2, $all, $chosen]));
+    }
     $perLanguage = publish_shop_can_set_image_languages($ws);
     $set = publish_shop_image_set($ctx, $plan, $languages, $perLanguage);
     publish_shop_print_plan($ctx, $plan, $languages, $category, $tax, publish_shop_describe_images($ctx, $set, $perLanguage));
@@ -132,8 +141,9 @@ function publish_cmd_shop(array $ctx, bool $dryRun, bool $force = false, bool $u
         return 0;
     }
 
-    $features = publish_shop_features($ws, $plan['features'], $languages);
-    $xml = publish_shop_product_xml($plan, $languages, $fields, $features, $category, $tax);
+    $features = publish_shop_feature_pairs($ws, $plan['managed_features'], $languages)['pairs'];
+    $hasExtra = publish_shop_has_resource($ws, PUBLISH_SHOP_EXTRA_RESOURCE);
+    $xml = publish_shop_product_xml($hasExtra ? publish_shop_plan_without_list($plan) : $plan, $languages, $fields, $features, $category, $tax);
     $created = publish_shop_ws($ws, 'POST', 'products', [], $xml);
     $id = (int) ($created['body']['product']['id'] ?? 0);
     if ($id <= 0) {
@@ -171,6 +181,15 @@ function publish_cmd_shop(array $ctx, bool $dryRun, bool $force = false, bool $u
         }
     }
 
+    if (publish_shop_has_resource($ws, PUBLISH_SHOP_CHANGELOG_RESOURCE)) {
+        $report = publish_shop_sync_changelog($ws, $id, $plan['changelog'], $languages, false);
+        echo '  changelog: ' . ($report === [] ? 'nothing to add' : implode(', ', $report)) . "\n";
+    }
+    if ($hasExtra) {
+        $report = publish_shop_sync_extra($ws, $id, publish_shop_extra_features($plan, $languages), publish_shop_extra_documentation($ctx, $languages), false);
+        echo '  extra fields: ' . ($report === [] ? 'nothing to fill' : implode(', ', $report)) . "\n";
+    }
+
     $zip = $ctx['repo'] . '/dist/' . $ctx['module'] . '.zip';
     echo "\nLeft to do by hand in the back office (Catalog > Products > #$id):\n";
     echo '  1. Virtual product tab: add the file ../dist/' . $ctx['module'] . '.zip'
@@ -190,37 +209,44 @@ function publish_cmd_shop(array $ctx, bool $dryRun, bool $force = false, bool $u
 }
 
 /**
- * publish shop --update: replaces the texts (every shop language) and the images of the existing product and makes
- * sure of its features; everything else stays. Exit 1 when the shop has no product with the module's reference.
+ * publish shop --update: brings the existing product up to date, part by part (--only=..., default every part):
+ * texts (every shop language; never the friendly URL), images, features, reference (only a product that still has the
+ * technical module name as reference gets its short H... reference), category (only a product that is in no category
+ * below Home yet), changelog and the theme's extra fields. Everything else stays: price, tax rule, active state,
+ * stock, visibility, the virtual product file. Exit 1 when the shop has no product for the module.
  *
  * Order, so the product is never left without pictures or half changed:
  *   1. upload the new images (the old cover stays the cover meanwhile); a failed upload removes the images of this
  *      run again and stops: the product is as it was;
- *   2. PUT the product with the new texts and the features (cover untouched); when the shop refuses it, the new images
- *      are removed again and the product is as it was;
+ *   2. PUT the product with the new texts, features, reference and category (cover untouched); when the shop refuses
+ *      it, the new images are removed again and the product is as it was;
  *   3. only then delete the old images (a failure there leaves an extra picture, listed as a manual step);
  *   4. PUT again with the first new image as the cover (no old cover is left to clash with in any shop);
- *   5. read the product back: the cover must be the new one and the fields that must not change must be the same.
+ *   5. read the product back: the cover must be the new one and the fields that must not change must be the same;
+ *   6. the changelog and the extra fields, through their own webservice resources.
  *
  * @param array{api: string, key: string} $ws
  * @param array<string, mixed> $ctx
  * @param array<string, mixed> $plan
  * @param array<int, array{iso: string, name: string, module: string|null}> $languages
+ * @param string[] $parts PUBLISH_SHOP_PARTS to write
  *
  * @throws RuntimeException when the shop refuses a step (after undoing the steps before it)
  */
-function publish_shop_update(array $ws, array $ctx, array $plan, array $languages, bool $dryRun): int
+function publish_shop_update(array $ws, array $ctx, array $plan, array $languages, bool $dryRun, array $parts = PUBLISH_SHOP_PARTS): int
 {
-    $existing = publish_shop_find_product($ws, $ctx['module']);
+    $existing = publish_shop_find_existing($ws, $ctx, $plan);
     if ($existing === null) {
-        echo "The sales shop has no product with reference {$ctx['module']}: nothing to update.\n"
+        echo "The sales shop has no product for {$ctx['module']} (reference {$ctx['module']} or the product name): nothing to update.\n"
             . 'Create it first: vendor/bin/ps-module publish shop' . ($dryRun ? ' --dry-run' : '') . "\n";
 
         return 1;
     }
     $id = $existing['id'];
+    $want = static fn (string $part): bool => in_array($part, $parts, true);
+    $writesProduct = $want('texts') || $want('images') || $want('features') || $want('reference') || $want('category');
     // Checked before anything is written: without them the run would upload the images and then have to undo it.
-    $missing = publish_shop_missing_permissions($ws, ['products' => ['get', 'put'], 'images' => ['post', 'delete']]);
+    $missing = $writesProduct ? publish_shop_missing_permissions($ws, ['products' => ['get', 'put']] + ($want('images') ? ['images' => ['post', 'delete']] : [])) : [];
     if ($missing !== []) {
         echo 'The webservice key lacks: ' . implode(', ', $missing) . " (Advanced Parameters > Webservice).\n";
         if (!$dryRun) {
@@ -231,29 +257,84 @@ function publish_shop_update(array $ws, array $ctx, array $plan, array $language
     }
     $before = publish_shop_product_doc($ws, $id);
     $oldImages = publish_shop_image_ids($before);
-    $multilang = publish_shop_multilang($plan, $languages);
+    $hasExtra = ($want('extra') || $want('texts')) && publish_shop_has_resource($ws, PUBLISH_SHOP_EXTRA_RESOURCE);
+    $hasChangelog = $want('changelog') && publish_shop_has_resource($ws, PUBLISH_SHOP_CHANGELOG_RESOURCE);
+    // With the theme's extra field "Features" the <ul> list goes there and out of the description.
+    $multilang = $want('texts') ? publish_shop_multilang($hasExtra ? publish_shop_plan_without_list($plan) : $plan, $languages) : [];
+    unset($multilang['link_rewrite']); // the friendly URL is never changed on an existing product (SEO, hand edits)
     $skip = array_values(array_unique(array_merge(PUBLISH_SHOP_PUT_SKIP, publish_shop_read_only_fields($ws))));
-    $perLanguage = publish_shop_can_set_image_languages($ws);
-    $set = publish_shop_image_set($ctx, $plan, $languages, $perLanguage);
+    $perLanguage = $want('images') && publish_shop_can_set_image_languages($ws);
+    $set = $want('images') ? publish_shop_image_set($ctx, $plan, $languages, $perLanguage) : [];
 
-    echo "Update of sales shop product #$id for {$ctx['module']} {$ctx['version']} (" . ($existing['active'] ? 'active' : 'inactive') . ", stays so):\n";
+    // Reference: a product made by an older publish shop has the technical name; it gets the short one.
+    $plain = [];
+    $currentReference = publish_shop_field($before, 'reference');
+    if ($want('reference') && ($currentReference === '' || $currentReference === $ctx['module'])) {
+        $plain['reference'] = publish_shop_reference(basename($ctx['repo']), publish_shop_references($ws, $id));
+    }
+    // Category: only a product that is in no category below Home yet (George sorts the others by hand).
+    $categories = null;
+    $categoryNote = 'kept (the product has its categories)';
+    if ($want('category')) {
+        $current = array_map('intval', publish_shop_association_ids($before, 'categories'));
+        if (array_diff($current, [1, 2]) === []) {
+            [$all, $children] = publish_shop_category_tree($ws, $languages);
+            $chosen = publish_shop_choose_category($ws, $ctx, $all, $children, $languages, $dryRun);
+            if ($chosen > 0) {
+                $categories = array_values(array_unique([2, $all, $chosen]));
+                $plain['id_category_default'] = (string) $chosen;
+                $categoryNote = "#$chosen " . ($children[$chosen] ?? '(new)') . ' (+ Home, All modules)';
+            } else {
+                $categoryNote = 'none fits: set docs.json > sales.category or sales.new_category';
+            }
+        }
+    }
+
+    echo "Update of sales shop product #$id for {$ctx['module']} {$ctx['version']} (" . ($existing['active'] ? 'active' : 'inactive') . ', stays so; parts: ' . implode(', ', $parts) . "):\n";
     foreach (publish_shop_text_changes($before, $multilang) as $field => $changed) {
         printf("  %-17s %s\n", $field, $changed === 0 ? 'unchanged' : "new text in $changed of " . count($languages) . ' language(s)');
     }
-    printf("  %-17s %s\n", 'images', 'new: ' . publish_shop_describe_images($ctx, $set, $perLanguage));
-    printf("  %-17s %s\n", '', $oldImages === [] ? 'the product has no images yet' : 'replace the ' . count($oldImages) . ' current one(s): #' . implode(' #', $oldImages));
-    printf("  %-17s %s\n", 'features', implode(', ', array_map(static fn (array $f): string => ($f['name']['en'] ?? '?') . ': ' . ($f['value']['en'] ?? '?'), $plan['features'])) . ' (added when missing)');
-    printf("  %-17s %s\n", 'kept as they are', 'price, tax rule, categories, active state, stock, virtual product file, visibility, reference');
+    if ($want('images')) {
+        printf("  %-17s %s\n", 'images', 'new: ' . publish_shop_describe_images($ctx, $set, $perLanguage));
+        printf("  %-17s %s\n", '', $oldImages === [] ? 'the product has no images yet' : 'replace the ' . count($oldImages) . ' current one(s): #' . implode(' #', $oldImages));
+    }
+    if ($want('features')) {
+        printf("  %-17s %s\n", 'features', implode('; ', array_map(static fn (array $f): string => $f['name'] . ': ' . implode(', ', $f['values']), $plan['managed_features'])) . ' (' . implode(', ', PUBLISH_SHOP_DROPPED_FEATURES) . ' taken off)');
+    }
+    if ($want('reference')) {
+        printf("  %-17s %s\n", 'reference', isset($plain['reference']) ? "'$currentReference' -> '{$plain['reference']}'" : "kept ('$currentReference')");
+    }
+    if ($want('category')) {
+        printf("  %-17s %s\n", 'category', $categoryNote);
+    }
+    if ($want('changelog')) {
+        printf("  %-17s %s\n", 'changelog', $hasChangelog ? count($plan['changelog']) . ' version(s) from CHANGELOG.md, in sync' : 'skipped: the shop has no ' . PUBLISH_SHOP_CHANGELOG_RESOURCE . ' (Product Changelog 1.4.0+, key GET/POST/PUT)');
+    }
+    if ($want('extra') || $want('texts')) {
+        printf("  %-17s %s\n", 'extra fields', $hasExtra ? 'Features list and documentation link' : 'skipped: the shop has no ' . PUBLISH_SHOP_EXTRA_RESOURCE . ' (heaventhemefields 1.7.0+); the list stays in the description');
+    }
+    printf("  %-17s %s\n", 'kept as they are', 'price, tax rule, active state, stock, virtual product file, visibility, friendly URL');
     if ($plan['fallback'] !== []) {
         printf("  %-17s %s\n", 'no texts', implode(' ', $plan['fallback']) . ' (no docs/content/<iso>/marketing.json: English)');
     }
     if ($dryRun) {
+        if ($hasChangelog) {
+            $report = publish_shop_sync_changelog($ws, $id, $plan['changelog'], $languages, true);
+            printf("  %-17s %s\n", '', $report === [] ? 'changelog already in sync' : implode(', ', $report));
+        }
+        if ($hasExtra) {
+            $report = publish_shop_sync_extra($ws, $id, publish_shop_extra_features($plan, $languages), publish_shop_extra_documentation($ctx, $languages), true);
+            printf("  %-17s %s\n", '', $report === [] ? 'extra fields already filled' : implode(', ', $report));
+        }
         echo "Dry run: nothing changed.\n";
 
         return 0;
     }
 
-    $features = publish_shop_features($ws, $plan['features'], $languages);
+    $features = ['pairs' => [], 'drop' => []];
+    if ($want('features')) {
+        $features = publish_shop_feature_pairs($ws, $plan['managed_features'], $languages);
+    }
 
     // 1. The new images first: until the old ones are gone the product keeps its pictures and its cover.
     $total = count($set);
@@ -269,85 +350,240 @@ function publish_shop_update(array $ws, array $ctx, array $plan, array $language
             . ($entry['languages'] === [] ? '' : ' (' . implode(' ', $entry['languages']) . ')') . "\n";
     }
 
-    // 2. Texts and features, in a PUT of the full product as the shop has it now. The cover is left out here: the shop
-    // sets a cover while it reads the request, before it validates the texts, so a refused PUT would otherwise leave
-    // the product with a cover that the undo below removes.
+    // 2. Texts, features, reference and category, in a PUT of the full product as the shop has it now. The cover is
+    // left out here: the shop sets a cover while it reads the request, before it validates the texts, so a refused PUT
+    // would otherwise leave the product with a cover that the undo below removes.
     $current = publish_shop_product_doc($ws, $id);
     $newImages = array_values(array_diff(publish_shop_image_ids($current), $oldImages));
     sort($newImages);
-    if (count($newImages) !== $total) {
+    if ($want('images') && count($newImages) !== $total) {
         fwrite(STDERR, 'ps-module publish shop: the shop lists ' . count($newImages) . " new image(s) after $total upload(s): check the images of product #$id.\n");
     }
-    try {
-        publish_shop_ws($ws, 'PUT', "products/$id", [], publish_shop_update_xml($current, $multilang, $features, 0, $skip));
-    } catch (RuntimeException $e) {
-        $removed = publish_shop_remove_new_images($ws, $id, $oldImages);
-        throw new RuntimeException('the shop refused the new texts (' . $e->getMessage() . "); the $removed new image(s) were removed again, the old images are as they were. Check the texts of product #$id: a refusal after saving (an association) keeps the new ones.");
-    }
-    echo '  texts saved in ' . count($languages) . ' language(s), features: ' . (implode(', ', array_column($features, 'label')) ?: 'none') . "\n";
-
-    // 3. Only now the old images: a failure here leaves an extra picture, never a product without one.
-    $left = publish_shop_delete_images($ws, $id, $oldImages);
-    if ($oldImages !== []) {
-        echo '  old image(s) removed: ' . (count($oldImages) - count($left)) . '/' . count($oldImages) . "\n";
-    }
-    if ($left !== []) {
-        fwrite(STDERR, 'ps-module publish shop: old image(s) #' . implode(' #', $left) . " not removed.\n");
-    }
-
-    // The languages and captions of the new images (heavenlangimages_images); a failure leaves an image for every
-    // language, listed as a manual step.
-    $languageProblems = [];
-    if ($perLanguage && $newImages !== []) {
-        $languageProblems = publish_shop_set_image_languages($ws, $set, $newImages);
-        echo '  languages and captions set for ' . (count($set) - count($languageProblems)) . '/' . count($set) . " image(s)\n";
-        foreach ($languageProblems as $problem) {
-            fwrite(STDERR, "ps-module publish shop: languages not set: $problem\n");
-        }
-    }
-
-    // 4. The first new image as the cover (the old cover is gone with the old images, so no shop keeps it), in a
-    // second PUT of the full product: the texts are in, so it sends them back as they are now.
-    if ($newImages !== []) {
+    if ($multilang !== [] || $features['pairs'] !== [] || $features['drop'] !== [] || $plain !== [] || $categories !== null) {
         try {
-            publish_shop_ws($ws, 'PUT', "products/$id", [], publish_shop_update_xml(publish_shop_product_doc($ws, $id), [], [], $newImages[0], $skip));
-            echo "  cover: image #{$newImages[0]}\n";
+            publish_shop_ws($ws, 'PUT', "products/$id", [], publish_shop_update_xml($current, $multilang, $features['pairs'], 0, $skip, $features['drop'], $plain, $categories));
         } catch (RuntimeException $e) {
-            fwrite(STDERR, 'ps-module publish shop: the cover was not set (' . publish_mask($e->getMessage()) . "): make image #{$newImages[0]} the cover by hand.\n");
+            $removed = $want('images') ? publish_shop_remove_new_images($ws, $id, $oldImages) : 0;
+            throw new RuntimeException('the shop refused the product changes (' . $e->getMessage() . ')' . ($want('images') ? "; the $removed new image(s) were removed again, the old images are as they were" : '') . ". Check product #$id: a refusal after saving (an association) keeps the new values.");
+        }
+        echo '  saved: ' . implode(', ', array_filter([
+            $multilang !== [] ? 'texts in ' . count($languages) . ' language(s)' : '',
+            $features['pairs'] !== [] ? count($features['pairs']) . ' feature value(s)' : '',
+            isset($plain['reference']) ? "reference {$plain['reference']}" : '',
+            $categories !== null ? 'categories #' . implode(' #', $categories) : '',
+        ])) . "\n";
+    }
+
+    $left = [];
+    $languageProblems = [];
+    if ($want('images')) {
+        // 3. Only now the old images: a failure here leaves an extra picture, never a product without one.
+        $left = publish_shop_delete_images($ws, $id, $oldImages);
+        if ($oldImages !== []) {
+            echo '  old image(s) removed: ' . (count($oldImages) - count($left)) . '/' . count($oldImages) . "\n";
+        }
+        if ($left !== []) {
+            fwrite(STDERR, 'ps-module publish shop: old image(s) #' . implode(' #', $left) . " not removed.\n");
+        }
+        // The languages and captions of the new images (heavenlangimages_images); a failure leaves an image for every
+        // language, listed as a manual step.
+        if ($perLanguage && $newImages !== []) {
+            $languageProblems = publish_shop_set_image_languages($ws, $set, $newImages);
+            echo '  languages and captions set for ' . (count($set) - count($languageProblems)) . '/' . count($set) . " image(s)\n";
+            foreach ($languageProblems as $problem) {
+                fwrite(STDERR, "ps-module publish shop: languages not set: $problem\n");
+            }
+        }
+        // 4. The first new image as the cover (the old cover is gone with the old images, so no shop keeps it), in a
+        // second PUT of the full product: the texts are in, so it sends them back as they are now.
+        if ($newImages !== []) {
+            try {
+                publish_shop_ws($ws, 'PUT', "products/$id", [], publish_shop_update_xml(publish_shop_product_doc($ws, $id), [], [], $newImages[0], $skip));
+                echo "  cover: image #{$newImages[0]}\n";
+            } catch (RuntimeException $e) {
+                fwrite(STDERR, 'ps-module publish shop: the cover was not set (' . publish_mask($e->getMessage()) . "): make image #{$newImages[0]} the cover by hand.\n");
+            }
         }
     }
 
-    // 5. Read back: the new cover, and nothing changed that must stay.
+    // 5. Read back: the new cover, and nothing changed that must stay (the reference and the categories only as asked).
     $after = publish_shop_product_doc($ws, $id);
     if (publish_shop_field($after, 'active') !== publish_shop_field($before, 'active')) {
         throw new RuntimeException("product #$id changed its active state from '" . publish_shop_field($before, 'active') . "' to '" . publish_shop_field($after, 'active') . "': set it back by hand NOW (Catalog > Products).");
     }
-    $changed = publish_shop_kept_changes($before, $after);
+    $changed = array_values(array_filter(publish_shop_kept_changes($before, $after), static fn (string $c): bool => !(isset($plain['reference']) && str_starts_with($c, 'reference '))
+        && !($categories !== null && (str_starts_with($c, 'categories ') || str_starts_with($c, 'id_category_default ')))));
     foreach ($changed as $change) {
         fwrite(STDERR, "ps-module publish shop: warning: $change changed, check it in the back office.\n");
     }
     $cover = publish_shop_field($after, 'id_default_image');
-    if ($newImages !== [] && $cover !== (string) $newImages[0]) {
+    if ($newImages !== [] && $want('images') && $cover !== (string) $newImages[0]) {
         fwrite(STDERR, "ps-module publish shop: warning: the cover is image #$cover instead of #{$newImages[0]}: choose the cover by hand.\n");
     }
-    echo "Updated product #$id \"{$plan['name'][$plan['source']]}\": texts, $total image(s)" . ($changed === [] ? '; price, tax rule, categories, active state and stock are as they were' : '') . ".\n";
 
-    $zip = $ctx['repo'] . '/dist/' . $ctx['module'] . '.zip';
-    echo "\nLeft to do by hand in the back office (Catalog > Products > #$id):\n";
-    echo '  1. Virtual product tab: replace the file with ../dist/' . $ctx['module'] . '.zip'
-        . (is_file($zip) ? ' (' . publish_size((int) filesize($zip)) . ', ' . date('Y-m-d H:i', (int) filemtime($zip)) . ')' : ' (not built yet: vendor/bin/ps-module build)') . "\n";
-    echo "  2. Check the texts and the images\n";
-    echo '  3. ' . ($existing['active'] ? 'The product is active: deactivate it while the zip is not in yet' : 'Activate the product when it is ready (it stays inactive)') . "\n";
+    // 6. The changelog and the extra fields, each through its own resource.
+    if ($hasChangelog) {
+        $report = publish_shop_sync_changelog($ws, $id, $plan['changelog'], $languages, false);
+        echo '  changelog: ' . ($report === [] ? 'already in sync' : implode(', ', $report)) . "\n";
+    }
+    if ($hasExtra) {
+        $report = publish_shop_sync_extra($ws, $id, publish_shop_extra_features($plan, $languages), publish_shop_extra_documentation($ctx, $languages), false);
+        echo '  extra fields: ' . ($report === [] ? 'already filled' : implode(', ', $report)) . "\n";
+    }
+    echo "Updated product #$id \"{$plan['name'][$plan['source']]}\" (" . implode(', ', $parts) . ')' . ($changed === [] ? '; price, tax rule, active state and stock are as they were' : '') . ".\n";
+
+    $todo = [];
+    if ($want('images') || $want('texts')) {
+        $todo[] = 'Check the texts and the images';
+    }
     if ($left !== []) {
-        echo '  4. Remove the old image(s) #' . implode(' #', $left) . " (see above)\n";
+        $todo[] = 'Remove the old image(s) #' . implode(' #', $left) . ' (see above)';
     }
     if ($languageProblems !== []) {
-        echo '  ' . ($left !== [] ? '5' : '4') . '. ' . count($languageProblems) . " image(s) without their languages (see above): set them in the Images section of the product\n";
+        $todo[] = count($languageProblems) . ' image(s) without their languages (see above): set them in the Images section of the product';
     }
-    publish_record($ctx, 'shop', "product #$id updated: texts, $total image(s); zip by hand");
+    if (!$existing['active']) {
+        $todo[] = 'Activate the product when it is ready (it stays inactive)';
+    }
+    if ($todo !== []) {
+        echo "\nLeft to do by hand in the back office (Catalog > Products > #$id):\n";
+        foreach ($todo as $n => $line) {
+            echo '  ' . ($n + 1) . ". $line\n";
+        }
+    }
+    echo "The zip follows through PrestaHaven Sales Sync (update server).\n";
+    publish_record($ctx, 'shop', "product #$id updated: " . implode(', ', $parts));
     echo "Recorded step 'shop' for {$ctx['version']}.\n";
 
     return 0;
+}
+
+/**
+ * The product of the module in the shop: the one with the technical name as reference (made by an older publish
+ * shop), else the one product whose name is the module's name (any language) and whose reference is not another
+ * module's technical name. Null when there is none or more than one.
+ *
+ * @param array{api: string, key: string} $ws
+ * @param array<string, mixed> $ctx
+ * @param array<string, mixed> $plan
+ *
+ * @return array{id: int, active: bool}|null
+ */
+function publish_shop_find_existing(array $ws, array $ctx, array $plan): ?array
+{
+    $byReference = publish_shop_find_product($ws, $ctx['module']);
+    if ($byReference !== null) {
+        return $byReference;
+    }
+    $byName = array_values(array_filter(publish_shop_find_by_name($ws, $plan['name']), static fn (array $p): bool => !preg_match('/^heaven[a-z0-9]+$/', $p['reference'])));
+    if (count($byName) > 1) {
+        fwrite(STDERR, 'ps-module publish shop: ' . count($byName) . ' products have the name of the module (#' . implode(' #', array_column($byName, 'id')) . "): give the right one the module's reference.\n");
+
+        return null;
+    }
+
+    return $byName === [] ? null : ['id' => $byName[0]['id'], 'active' => $byName[0]['active']];
+}
+
+/**
+ * The references of every product except $exceptId (to keep a new reference unique).
+ *
+ * @param array{api: string, key: string} $ws
+ *
+ * @return string[]
+ */
+function publish_shop_references(array $ws, int $exceptId = 0): array
+{
+    $rows = (array) (publish_shop_ws($ws, 'GET', 'products', ['display' => '[id,reference]'])['body']['products'] ?? []);
+
+    return array_values(array_filter(array_map(static fn ($r): string => is_array($r) && (int) ($r['id'] ?? 0) !== $exceptId ? (string) ($r['reference'] ?? '') : '', $rows), static fn (string $r): bool => $r !== ''));
+}
+
+/**
+ * The category for the module: an existing one (docs.json > sales.category, else the suggestion from its Addons
+ * category), else a new one from docs.json > sales.new_category (created now, not in a dry run). 0 when none.
+ *
+ * @param array{api: string, key: string} $ws
+ * @param array<string, mixed> $ctx
+ * @param array<int, string> $children subcategories of All modules
+ * @param array<int, array{iso: string, name: string, module: string|null}> $languages
+ */
+function publish_shop_choose_category(array $ws, array $ctx, int $all, array $children, array $languages, bool $dryRun): int
+{
+    if ($all === 0) {
+        return 0;
+    }
+    $docs = publish_json($ctx['repo'] . '/docs/docs.json');
+    $chosen = publish_shop_suggest_category($docs, $children);
+    if ($chosen !== null) {
+        return $chosen;
+    }
+    $definition = (array) ($docs['sales']['new_category'] ?? []);
+    if ($definition === []) {
+        return 0;
+    }
+    if ($dryRun) {
+        echo '  (dry run: would create the category "' . ($definition['name']['en'] ?? '?') . "\" under All modules)\n";
+
+        return -1;
+    }
+    $id = publish_shop_create_category($ws, $all, $definition, $languages);
+    echo '  category created: #' . $id . ' "' . ($definition['name']['en'] ?? '') . "\" under All modules\n";
+
+    return $id;
+}
+
+/**
+ * The plan with the descriptions without their <ul> list (the list then goes to the theme's extra field Features).
+ *
+ * @param array<string, mixed> $plan
+ *
+ * @return array<string, mixed>
+ */
+function publish_shop_plan_without_list(array $plan): array
+{
+    foreach ($plan['description'] as $iso => $html) {
+        $plan['description'][$iso] = publish_shop_split_description((string) $html)[0];
+    }
+
+    return $plan;
+}
+
+/**
+ * The <ul> feature list per shop language id (the module language's, else the source language's).
+ *
+ * @param array<string, mixed> $plan
+ * @param array<int, array{iso: string, name: string, module: string|null}> $languages
+ *
+ * @return array<int, string>
+ */
+function publish_shop_extra_features(array $plan, array $languages): array
+{
+    $lists = array_map(static fn (string $html): string => trim(publish_shop_split_description($html)[1], " \n\r\t"), $plan['description']);
+
+    return array_filter(publish_shop_lang_values($lists, $languages, 0, $plan['source']), static fn (string $v): bool => $v !== '');
+}
+
+/**
+ * The documentation link per shop language id: the manual in the module language of that shop language, else English.
+ *
+ * @param array<string, mixed> $ctx
+ * @param array<int, array{iso: string, name: string, module: string|null}> $languages
+ *
+ * @return array<int, string>
+ */
+function publish_shop_extra_documentation(array $ctx, array $languages): array
+{
+    $docsSite = publish_env($ctx, 'DOCS_SITE_URL');
+    $urls = [];
+    foreach ($languages as $id => $language) {
+        $url = publish_shop_documentation_url($docsSite, $ctx['module'], $language['module'] ?? 'en');
+        if ($url !== '') {
+            $urls[$id] = $url;
+        }
+    }
+
+    return $urls;
 }
 
 /**
@@ -572,10 +808,13 @@ function publish_shop_text_changes(DOMDocument $doc, array $multilang): array
  * @param array<string, array<int, string>> $multilang field => language id => text
  * @param array<int, array{feature: int, value: int, label: string}> $features
  * @param string[] $skip fields left out
+ * @param int[] $dropFeatures features taken off the product
+ * @param array<string, string> $plain plain fields set (reference, id_category_default)
+ * @param int[]|null $categories the product's categories (null: as they are)
  *
  * @throws RuntimeException when the document has no product
  */
-function publish_shop_update_xml(DOMDocument $current, array $multilang, array $features, int $coverId, array $skip): string
+function publish_shop_update_xml(DOMDocument $current, array $multilang, array $features, int $coverId, array $skip, array $dropFeatures = [], array $plain = [], ?array $categories = null): string
 {
     $doc = clone $current;
     $product = publish_shop_product_node($doc);
@@ -592,6 +831,13 @@ function publish_shop_update_xml(DOMDocument $current, array $multilang, array $
         if ($node instanceof DOMElement && !in_array($node->tagName, ['id', 'id_default_image'], true) && trim($node->textContent, " \n\r\t\v\0") === '' && !publish_shop_has_elements($node)) {
             $product->removeChild($node);
         }
+    }
+    foreach ($plain as $field => $value) {
+        $node = publish_shop_child($product, $field) ?? $product->appendChild($doc->createElement($field));
+        while ($node->firstChild !== null) {
+            $node->removeChild($node->firstChild);
+        }
+        $node->appendChild($doc->createTextNode($value));
     }
     foreach ($multilang as $field => $values) {
         $node = publish_shop_child($product, $field);
@@ -628,20 +874,33 @@ function publish_shop_update_xml(DOMDocument $current, array $multilang, array $
     } elseif ($cover !== null) {
         $product->removeChild($cover);
     }
+    // Only the associations this run changes are sent; the shop leaves the others alone when they are not in the PUT.
+    $touchFeatures = $features !== [] || $dropFeatures !== [];
     $associations = publish_shop_child($product, 'associations');
     foreach ($associations !== null ? iterator_to_array($associations->childNodes) : [] as $list) {
-        if (!($list instanceof DOMElement) || $list->tagName !== 'product_features' || $features === []) {
+        if (!($list instanceof DOMElement) || !(($list->tagName === 'product_features' && $touchFeatures) || ($list->tagName === 'categories' && $categories !== null))) {
             $associations->removeChild($list);
         }
     }
-    if ($associations !== null && $features === []) {
+    if ($associations !== null && !$touchFeatures && $categories === null) {
         $product->removeChild($associations);
     }
-    if ($features !== []) {
+    if ($categories !== null) {
+        $associations = publish_shop_child($product, 'associations') ?? $product->appendChild($doc->createElement('associations'));
+        if ($associations instanceof DOMElement) {
+            $old = publish_shop_child($associations, 'categories');
+            $old?->parentNode?->removeChild($old);
+            $list = $associations->appendChild($doc->createElement('categories'));
+            foreach ($categories as $categoryId) {
+                $list->appendChild($doc->createElement('category'))->appendChild($doc->createElement('id'))->appendChild($doc->createTextNode((string) $categoryId));
+            }
+        }
+    }
+    if ($touchFeatures) {
         $associations = publish_shop_child($product, 'associations') ?? $product->appendChild($doc->createElement('associations'));
         $list = $associations instanceof DOMElement ? (publish_shop_child($associations, 'product_features') ?? $associations->appendChild($doc->createElement('product_features'))) : null;
         if ($list instanceof DOMElement) {
-            $ours = array_map(static fn (array $f): string => (string) $f['feature'], $features);
+            $ours = array_merge(array_map(static fn (array $f): string => (string) $f['feature'], $features), array_map('strval', $dropFeatures));
             foreach (iterator_to_array($list->childNodes) as $item) {
                 $featureId = $item instanceof DOMElement ? publish_shop_child($item, 'id') : null;
                 if ($featureId !== null && in_array(trim($featureId->textContent, " \n\r\t\v\0"), $ours, true)) {
@@ -800,7 +1059,9 @@ function publish_shop_plan(array $ctx): array
     }
     $plan['images'] = $images;
     $plan['price'] = round((float) ($docs['marketing']['price'] ?? 0), 6);
-    $plan['features'] = array_values(array_filter((array) (publish_json(__DIR__ . '/../resources/publish/shop-features.json')['features'] ?? []), 'is_array'));
+    $demo = publish_env($ctx, 'DEMO_SITE_URL');
+    $plan['managed_features'] = publish_shop_managed_features($ctx, $demo === '' ? '' : rtrim($demo, '/') . '/' . trim(publish_env($ctx, 'DEMO_SITE_INTRO_PATH') ?: 'start', '/') . '/');
+    $plan['changelog'] = publish_shop_changelog((string) @file_get_contents("$repo/CHANGELOG.md"));
 
     return $plan;
 }
@@ -1184,6 +1445,8 @@ function publish_shop_features(array $ws, array $features, array $languages): ar
             $xml = publish_shop_xml('product_feature', [], ['name' => publish_shop_lang_values($feature['name'], $languages, 128)]);
             $featureId = (int) (publish_shop_ws($ws, 'POST', 'product_features', [], $xml)['body']['product_feature']['id'] ?? 0);
             echo "  feature created: {$feature['name']['en']} (#$featureId)\n";
+            // The next value of the same feature finds it (a feature with several values: versions, languages).
+            $existing[] = ['id' => $featureId, 'name' => [['id' => 0, 'value' => $feature['name']['en'] ?? '']]];
         }
         $values = (array) (publish_shop_ws($ws, 'GET', 'product_feature_values', ['display' => 'full', 'filter[id_feature]' => "[$featureId]"])['body']['product_feature_values'] ?? []);
         $values = array_filter($values, static fn ($v): bool => is_array($v) && (string) ($v['custom'] ?? '0') === '0');
@@ -1253,7 +1516,7 @@ function publish_shop_lang_values(array $texts, array $languages, int $max = 0, 
 function publish_shop_product_xml(array $plan, array $languages, array $schema, array $features, int $category, int $tax): string
 {
     $fields = [
-        'reference' => $plan['module'] ?? '',
+        'reference' => (string) ($plan['reference'] ?? $plan['module'] ?? ''),
         'active' => '0',
         'state' => '1',
         'type' => 'virtual',
@@ -1279,7 +1542,7 @@ function publish_shop_product_xml(array $plan, array $languages, array $schema, 
     }
     $associations = [];
     if (in_array('categories', $schema['associations'], true)) {
-        $associations['categories'] = [['category', ['id' => (string) $category]]];
+        $associations['categories'] = array_map(static fn (int $c): array => ['category', ['id' => (string) $c]], (array) ($plan['categories'] ?? [$category]));
     }
     if ($features !== [] && in_array('product_features', $schema['associations'], true)) {
         $associations['product_features'] = array_map(static fn (array $f): array => ['product_feature', ['id' => (string) $f['feature'], 'id_feature_value' => (string) $f['value']]], $features);
@@ -1369,11 +1632,12 @@ function publish_shop_print_plan(array $ctx, array $plan, ?array $languages, int
 {
     $source = $plan['source'];
     echo "Sales shop product for {$ctx['module']} {$ctx['version']}:\n";
-    printf("  %-13s %s (the command finds the product by it)\n", 'Reference', $ctx['module']);
+    printf("  %-13s %s\n", 'Reference', (string) ($plan['reference'] ?? 'H + the initials of ' . basename($ctx['repo']) . ' (unique in the shop)'));
     printf("  %-13s %s\n", 'Name', $plan['name'][$source]);
     printf("  %-13s %.2f excl. tax, tax rule %s\n", 'Price', $plan['price'], $tax > 0 ? "#$tax" : 'none (set it by hand)');
     printf("  %-13s #%d\n", 'Category', $category);
-    printf("  %-13s %s\n", 'Features', implode(', ', array_map(static fn (array $f): string => ($f['name']['en'] ?? '?') . ': ' . ($f['value']['en'] ?? '?'), $plan['features'])));
+    printf("  %-13s %s\n", 'Features', implode('; ', array_map(static fn (array $f): string => $f['name'] . ': ' . implode(', ', $f['values']), $plan['managed_features'])));
+    printf("  %-13s %s\n", 'Changelog', count($plan['changelog']) . ' version(s) from CHANGELOG.md (English, every language)');
     printf("  %-13s %s\n", 'Images', $images ?? implode(', ', array_map(static fn (string $f): string => publish_shop_relative($ctx, $f), $plan['images'])) . ' (first = cover)');
     printf("  %-13s %s\n", 'Status', 'INACTIVE (you activate it), virtual product; the zip is added by hand');
     if ($plan['fallback'] !== []) {

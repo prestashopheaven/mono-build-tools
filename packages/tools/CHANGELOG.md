@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.9.0] - 2026-11-19
+
+### Toegevoegd
+- `publish shop` vult en ververst het hele verkoopproduct (George, 2026-11-19; `src/publish-shop-content.php`):
+  de features van het thema (PrestaShop-versies, Multistore compatible, ondersteunde talen, overrides, demo-links; de
+  oude feature "Multistore" gaat eraf), een korte unieke referentie (H + beginletters: HPDA), de categorie (voorstel
+  uit de Addons-categorie, `docs.json > sales.category`, of nieuw met SEO-teksten uit `sales.new_category`), de
+  changelog uit `CHANGELOG.md` (de Engelse regels onder elke versie, in elke taal; Product Changelog 1.4.0) en de
+  extra velden van het thema (Features-lijst uit de omschrijving, documentatielink; heaventhemefields 1.7.0).
+- `publish shop --update --only=texts,images,features,reference,category,changelog,extra` en `--all` (elke module).
+
+### Gewijzigd
+- `--update` verandert de vriendelijke URL van een bestaand product niet meer, vindt een product ook op zijn naam
+  (handgemaakte producten met een eigen referentie), en de handmatige zip-stap is weg (Sales Sync doet dat).
+- Een feature met meerdere waarden wordt maar één keer aangemaakt.
+
 ## [1.8.0] - 2026-11-19
 
 ### Gewijzigd (retro heavenbingindexnow 1.0.0)
