@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.0] - 2026-11-19
+
+### Gewijzigd (retro heavenbingindexnow 1.0.0)
+- TST-07 telt alleen echte dispatches in code: `new <Naam>Command(` of een named constructor `<Naam>Command::forShops(`;
+  een naam in een comment of docblock telt niet meer.
+- `factory gate verify`: elk acceptatiescenario (A<n>) moet in de docblock of de naam (`testA<n>...`) van een
+  testmethode staan; een klasse-docblock telt niet (`testAcceptanceIds()`).
+- Multistore-ronde: een e-mailveld (EmailType) krijgt een e-mailmarkering (`ms-bo-all@example.com`), zodat een
+  formulier zonder tekstveld toch getest wordt.
+- Rooktests: alleen PHP-foutuitvoer ("Fatal error:" met dubbele punt, een uncaught exception, stack trace,
+  "Invalid token") faalt, niet dezelfde woorden in een gewone tekst (`src/smoke-error.php`).
+- Release-gate: een nieuw verkoopproduct dat op de pin van heavensalessync wacht, noemt die stap met het productnummer.
+- `publish`: haalt de tags op voordat het een versie "niet gereleased" noemt; `publish demo` warmt de homepage op na
+  het legen van de cache, voor de test (een koude eerste aanvraag gaf een 504 en een rollback).
+
 ## [1.7.1] - 2026-11-18
 
 - De wijziging van 1.6.2 (hieronder), opnieuw uitgebracht boven 1.7.0: tag v1.6.2 kwam na v1.7.0, dus Composer koos 1.7.0 zonder deze fix.

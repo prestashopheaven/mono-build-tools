@@ -337,6 +337,24 @@ warm_cache() {
     fi
 }
 
+# Opens the home page until it answers (at most 3 tries of 180 s), so the test after a deploy does not meet the cold
+# first request after the cache clear (a 504 rolled back the first live deploy of heavenbingindexnow 1.0.0). The answer
+# itself does not count: cmd_test judges the shop afterwards.
+warm_pages() {
+    [ -n "$URL" ] || return 0
+    local base="${URL%/}" try code began
+    find_route "$base/robots.txt"
+    for try in 1 2 3; do
+        began=$SECONDS
+        code="$(curl -s -L --max-time 180 ${CONNECT_TO:+--connect-to "$CONNECT_TO"} -o /dev/null -w '%{http_code}' "$base/" 2> /dev/null || true)"
+        vlog "warm-up $try: $base/ HTTP ${code:-000} in $((SECONDS - began))s"
+        if [ "${code:-000}" = "200" ]; then
+            return 0
+        fi
+    done
+    log "warning: the home page did not answer 200 while warming up; the test decides"
+}
+
 # The fixed demo settings: e-mail off, the demo employee, the intro page (demo-settings.php next to this script).
 # `cmd_settings intro`: only the intro page (its list of modules), the rest of the shop stays as it is (deploy).
 cmd_settings() {
@@ -505,6 +523,7 @@ cmd_deploy() {
     version="$(echo "$output" | sed -n 's/^DEMO-OK //p' | tail -n1)"
     cmd_settings intro
     warm_cache
+    warm_pages
     if ! cmd_test; then
         for f in "${TEST_FAILURES[@]}"; do
             if ! printf '%s\n' "${before[@]+"${before[@]}"}" | grep -Fxq -- "$f"; then new+=("$f"); fi
@@ -551,6 +570,7 @@ cmd_apply() {
     clear_cache
     cmd_settings intro
     warm_cache
+    warm_pages
     if ! cmd_test; then
         for f in "${TEST_FAILURES[@]}"; do
             if ! printf '%s\n' "${before[@]+"${before[@]}"}" | grep -Fxq -- "$f"; then new+=("$f"); fi

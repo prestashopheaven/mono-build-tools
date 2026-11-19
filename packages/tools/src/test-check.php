@@ -55,7 +55,8 @@ function checkTests(string $moduleDir): array
             $found[] = "$dir/:1 TST-04 missing: every module has unit tests and integration tests (unit + integration in module.spec.json > tests)";
         }
     }
-    $integrationText = testAllText("$moduleDir/tests/Integration");
+    // TST-07 looks at code only: a command named in a comment or docblock is not a dispatch.
+    $integrationText = testAllText("$moduleDir/tests/Integration", true);
     foreach (testSubjectFiles($moduleDir) as $relative) {
         $tokens = token_get_all((string) file_get_contents("$moduleDir/$relative"));
         $subject = testSubject($tokens);
@@ -89,7 +90,9 @@ function checkTests(string $moduleDir): array
                 $found[] = "$relative:$line TST-06 {$subject['name']} throws $exception, but no test expects it: \$this->expectException($exception::class) with the faulty input";
             }
         }
-        if (preg_match('#^src/Application/[^/]+/(Command|Query)/([^/]+)/\2\1\.php$#', $relative, $m) && !preg_match('/new\s+\\\\?(?:[\w\\\\]*\\\\)?' . preg_quote($m[2] . $m[1], '/') . '\s*\(/', $integrationText)) {
+        // A dispatch builds the message: new <Name>Command(...) or a named constructor <Name>Command::forShops(...).
+        if (preg_match('#^src/Application/[^/]+/(Command|Query)/([^/]+)/\2\1\.php$#', $relative, $m)
+            && !preg_match('/(?:new\s+\\\\?(?:[\w\\\\]*\\\\)?' . preg_quote($m[2] . $m[1], '/') . '\s*\(|\b' . preg_quote($m[2] . $m[1], '/') . '\s*::\s*(?!class\b)\w+\s*\()/', $integrationText)) {
             $found[] = "$relative:{$subject['line']} TST-07 {$m[2]}{$m[1]} is never dispatched in an integration test (tests/Integration: through the bus, against a real shop)";
         }
     }
@@ -303,7 +306,7 @@ function testSubject(array $tokens): ?array
 /**
  * All text of the PHP test files in a directory (recursive).
  */
-function testAllText(string $dir): string
+function testAllText(string $dir, bool $codeOnly = false): string
 {
     if (!is_dir($dir)) {
         return '';
@@ -311,11 +314,85 @@ function testAllText(string $dir): string
     $text = '';
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $file) {
         if (str_ends_with($file->getFilename(), '.php')) {
-            $text .= "\n" . (string) file_get_contents($file->getPathname());
+            $source = (string) file_get_contents($file->getPathname());
+            $text .= "\n" . ($codeOnly ? testWithoutComments($source) : $source);
         }
     }
 
     return $text;
+}
+
+/**
+ * The PHP source without its comments and docblocks (each replaced by a space).
+ */
+function testWithoutComments(string $source): string
+{
+    $out = '';
+    foreach (token_get_all($source) as $token) {
+        if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+            $out .= ' ';
+            continue;
+        }
+        $out .= is_array($token) ? $token[1] : $token;
+    }
+
+    return $out;
+}
+
+/**
+ * The acceptance ids (A1, A2, ...) that tests name where it counts: in the docblock of a test method or in the name of
+ * the test method (testA5...). A class docblock that lists ids proves nothing about which test covers them.
+ *
+ * @return array<string, string> id => "file:line" of the first test that names it
+ */
+function testAcceptanceIds(string $testsDir): array
+{
+    $found = [];
+    if (!is_dir($testsDir)) {
+        return $found;
+    }
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($testsDir, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if (!str_ends_with($file->getFilename(), '.php')) {
+            continue;
+        }
+        $path = str_replace('\\', '/', $file->getPathname());
+        $tokens = token_get_all((string) file_get_contents($path));
+        $count = count($tokens);
+        for ($i = 0; $i < $count; ++$i) {
+            if (!is_array($tokens[$i]) || $tokens[$i][0] !== T_FUNCTION) {
+                continue;
+            }
+            $name = testNext($tokens, $i);
+            $methodName = $name !== null && is_array($tokens[$name]) && $tokens[$name][0] === T_STRING ? $tokens[$name][1] : '';
+            $ids = [];
+            if (preg_match('/^test(A\d+)(?=[A-Z_]|$)/', $methodName, $m) === 1) {
+                $ids[] = $m[1];
+            }
+            // The docblock right before the method: walk back over modifiers, attributes and whitespace.
+            for ($j = $i - 1; $j >= 0; --$j) {
+                $t = $tokens[$j];
+                if (is_array($t) && in_array($t[0], [T_WHITESPACE, T_PUBLIC, T_PROTECTED, T_PRIVATE, T_STATIC, T_FINAL, T_ABSTRACT, T_COMMENT], true)) {
+                    continue;
+                }
+                if ($t === ']') { // an attribute such as #[DataProvider(...)]: skip it
+                    while ($j > 0 && !(is_array($tokens[$j]) && $tokens[$j][0] === T_ATTRIBUTE)) {
+                        --$j;
+                    }
+                    continue;
+                }
+                if (is_array($t) && $t[0] === T_DOC_COMMENT) {
+                    preg_match_all('/\bA\d+\b/', $t[1], $m);
+                    $ids = array_merge($ids, $m[0]);
+                }
+                break;
+            }
+            foreach ($ids as $id) {
+                $found[$id] ??= $path . ':' . $tokens[$i][2];
+            }
+        }
+    }
+
+    return $found;
 }
 
 /**

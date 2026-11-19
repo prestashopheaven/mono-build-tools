@@ -163,4 +163,20 @@ final class MultistoreFormParserTest extends TestCase
         self::assertSame(['form[medium]', 'form[emails]', 'form[days]'], $page['text']);
         self::assertSame('365', $page['fields']['form[days]']);
     }
+
+    public function testAnEmailInputIsACandidateWithAnEmailMarker(): void
+    {
+        $page = msParseFormPage($this->form(
+            '<input type="email" name="form[alert_email]" value="" />'
+            . '<input type="text" name="form[name]" value="x" />'
+        ), self::PAGE);
+
+        self::assertIsArray($page);
+        self::assertSame(['form[alert_email]', 'form[name]'], $page['text']);
+        self::assertSame(['form[alert_email]'], $page['email']);
+        self::assertSame('ms-bo-all@example.com', msFormMarker('all', false, 'all', true));
+        self::assertSame('ms-bo-s2@example.com', msFormMarker('shop', false, 's2', true));
+        self::assertSame('ms-bo-s2.', msFormMarker('shop', false, 's2'));
+        self::assertTrue(msSameValue('ms-bo-s2@example.com', msFormMarker('shop', false, 's2', true), false));
+    }
 }

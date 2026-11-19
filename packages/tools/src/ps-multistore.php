@@ -458,7 +458,7 @@ function msBackOfficeForm(Shop $shop, int $shop2, int $group2): array
     // The first text field whose value the form accepts: a field with its own validation (an email address, a
     // threshold below another) refuses the marker, and a refused save writes nothing, so the next field is tried.
     $picked = msPickTextField($page['text'], static function (string $field) use ($jar, $page): ?string {
-        $marker = msFormMarker('all', msIsNumber((string) ($page['fields'][$field] ?? '')));
+        $marker = msFormMarker('all', msIsNumber((string) ($page['fields'][$field] ?? '')), 'all', in_array($field, $page['email'] ?? [], true));
         ps_vlog("multistore form: trying field $field, all shops value $marker");
         $fields = $page['fields'];
         $fields[$field] = $marker;
@@ -468,7 +468,8 @@ function msBackOfficeForm(Shop $shop, int $shop2, int $group2): array
     $textField = $picked['field'] ?? $page['text'][0];
     $save = $picked['error'];
     $numeric = msIsNumber((string) ($page['fields'][$textField] ?? ''));
-    $allMarker = msFormMarker('all', $numeric);
+    $email = in_array($textField, $page['email'] ?? [], true);
+    $allMarker = msFormMarker('all', $numeric, 'all', $email);
     ps_vlog("multistore form: testing field $textField (" . ($numeric ? 'numeric' : 'text') . "), all shops value $allMarker; refused: " . json_encode($picked['refused']));
     $rows = msRowsWithValue($shop, $allMarker);
     if ($save !== null) {
@@ -494,7 +495,7 @@ function msBackOfficeForm(Shop $shop, int $shop2, int $group2): array
             $problems[] = "$label context: no multistore checkbox $checkbox next to $textField (MS-05: getParent() = MultistoreConfigurationType, 'multistore_configuration_key' per field)";
             break;
         }
-        $marker = msFormMarker($scope[0] === 's' ? 'shop' : 'group', $numeric, $scope);
+        $marker = msFormMarker($scope[0] === 's' ? 'shop' : 'group', $numeric, $scope, $email);
         ps_vlog("multistore form: $label context ($context), checkbox ticked, value $marker");
         $fields = $page['fields'];
         $fields[$checkbox] = $page['checkboxes'][$checkbox];
@@ -573,7 +574,7 @@ function msBackOfficeLogin(Shop $shop): array|string
 /**
  * Opens the configuration page in a shop context ('' = all shops, 's-2' = shop 2) and reads its form.
  *
- * @return array{action: string, fields: array<string, string>, checkboxes: array<string, string>, text: string[]}|string
+ * @return array{action: string, fields: array<string, string>, checkboxes: array<string, string>, text: string[], email?: string[]}|string
  */
 function msFormPage(string $jar, string $url, string $context): array|string
 {
@@ -604,7 +605,7 @@ function msFormPage(string $jar, string $url, string $context): array|string
  *
  * @param string $final the URL of the page (base of a relative action)
  *
- * @return array{action: string, fields: array<string, string>, checkboxes: array<string, string>, text: string[]}|string the form, or the reason there is none
+ * @return array{action: string, fields: array<string, string>, checkboxes: array<string, string>, text: string[], email?: string[]}|string the form, or the reason there is none
  */
 function msParseFormPage(string $html, string $final): array|string
 {
@@ -655,10 +656,14 @@ function msParseFormPage(string $html, string $final): array|string
             preg_match('/<option[^>]*\bselected\b[^>]*value="([^"]*)"|<option[^>]*value="([^"]*)"[^>]*\bselected\b/i', $content, $o);
             $value = html_entity_decode(($o[1] ?? '') !== '' ? $o[1] : ($o[2] ?? ''));
         }
-        if ($type === 'text' || $type === 'number') {
+        if ($type === 'text' || $type === 'number' || $type === 'email') {
             // A number input (IntegerType/NumberType in some PrestaShop versions) is a text field too: it gets the
-            // numeric marker. Also when disabled: in a shop context the checkbox enables it.
+            // numeric marker; an email input (EmailType) gets an email marker, so a form without a text field is
+            // still tested. Also when disabled: in a shop context the checkbox enables it.
             $page['text'][] = $fieldName;
+            if ($type === 'email') {
+                $page['email'][] = $fieldName;
+            }
         }
         if ($disabled) {
             continue; // browsers do not send disabled fields
@@ -684,8 +689,11 @@ function msIsNumber(string $value): bool
  * @param string $context 'all', 'shop' or 'group'
  * @param string $scope scope label of the shop or group ('s2', 'g2') for the text marker
  */
-function msFormMarker(string $context, bool $numeric, string $scope = 'all'): string
+function msFormMarker(string $context, bool $numeric, string $scope = 'all', bool $email = false): string
 {
+    if ($email) {
+        return 'ms-bo-' . $scope . '@example.com';
+    }
     if ($numeric) {
         return ['all' => '71', 'shop' => '72', 'group' => '73'][$context];
     }

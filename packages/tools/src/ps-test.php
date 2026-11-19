@@ -45,6 +45,7 @@ require_once __DIR__ . '/ps-multistore.php';
 require_once __DIR__ . '/lock.php';
 require_once __DIR__ . '/instance.php';
 require_once __DIR__ . '/queue.php';
+require_once __DIR__ . '/smoke-error.php';
 
 $repoRoot = dod_repo_dir((string) getcwd());
 if ($repoRoot === null) {
@@ -395,10 +396,9 @@ final class Shop
             if ($status !== 200) {
                 $problems[] = "$path returned HTTP $status";
             }
-            foreach (['Fatal error', 'Parse error', 'Warning: ', 'Notice: ', 'Deprecated: ', 'Uncaught '] as $needle) {
-                if (str_contains($body, $needle)) {
-                    $problems[] = "$path contains '" . trim($needle, " \n\r\t\v\0") . "'";
-                }
+            $error = smokeError($body, false);
+            if ($error !== null) {
+                $problems[] = "$path contains '{$error[0]}'";
             }
         }
 
@@ -469,12 +469,10 @@ final class Shop
                 $problems[] = "$label: HTTP $status ($finalUrl)";
                 continue;
             }
-            foreach (['Fatal error', 'Parse error', 'Warning: ', 'Notice: ', 'Uncaught ', 'Stack trace', 'Invalid token'] as $needle) {
-                if (stripos($body, $needle) !== false) {
-                    $pos = (int) stripos($body, $needle);
-                    $problems[] = "$label contains '" . trim($needle, " \n\r\t\v\0") . "': " . substr(trim((string) preg_replace('/\s+/', ' ', strip_tags(substr($body, max(0, $pos - 100), 400))), " \n\r\t\v\0"), 0, 300);
-                    break;
-                }
+            $error = smokeError($body, true);
+            if ($error !== null) {
+                [$needle, $pos] = $error;
+                $problems[] = "$label contains '$needle': " . substr(trim((string) preg_replace('/\s+/', ' ', strip_tags(substr($body, max(0, $pos - 100), 400))), " \n\r\t\v\0"), 0, 300);
             }
         }
         @unlink($jar);

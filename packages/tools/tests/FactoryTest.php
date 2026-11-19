@@ -453,6 +453,24 @@ final class FactoryTest extends TestCase
         self::assertStringContainsString('has no product', factory_release_problems(['sales' => ['product' => false, 'jobs' => []]] + $accepted, $sales)[0]);
         self::assertStringContainsString('(sales-sync jobs: queued, delivered)', factory_release_problems(['sales' => ['product' => true, 'jobs' => [['status' => 'queued'], ['status' => 'delivered']]]] + $accepted, $sales)[0]);
         self::assertStringContainsString('(sales-sync jobs: none)', factory_release_problems(['sales' => ['product' => true, 'jobs' => []]] + $accepted, $sales)[0]);
+        // A new product waits for its pin: the gate names the step, not the 15-minute poll.
+        self::assertStringContainsString('"Product #28 gets heavenx 1.0.0"', factory_release_problems(['sales' => ['product' => true, 'jobs' => [['status' => 'waiting', 'product_id' => 28]]]] + $accepted, $sales)[0]);
+        self::assertStringContainsString('"The product gets heavenx 1.0.0"', factory_release_problems(['sales' => ['product' => true, 'jobs' => [['status' => 'waiting']]]] + $accepted, $sales)[0]);
+    }
+
+    public function testTheVerifyGateWantsEveryAcceptanceScenarioNamedByATestMethod(): void
+    {
+        $repo = $this->repo . '/heaven-x';
+        mkdir("$repo/heavenx/tests/Integration", 0777, true);
+        file_put_contents("$repo/heavenx/heavenx.php", "<?php\n");
+        factory_init($repo, null);
+        file_put_contents("$repo/.factory/spec.json", json_encode(['acceptance' => [['id' => 'A1', 'need' => 'N1'], ['id' => 'A2', 'need' => 'N1']]]));
+        file_put_contents("$repo/heavenx/tests/Integration/XTest.php", "<?php\n/** A1 A2 */\nfinal class XTest\n{\n    /** A1: works. */\n    public function testIt(): void\n    {\n    }\n}\n");
+
+        $problems = factory_stage_problems($repo, 'verify');
+
+        self::assertSame([], array_values(array_filter($problems, static fn (string $p): bool => str_contains($p, 'A1'))));
+        self::assertCount(1, array_filter($problems, static fn (string $p): bool => str_contains($p, 'Acceptance scenario A2')));
     }
 
     public function testAbandonArchivesTheSpecAndRemovesANewRun(): void

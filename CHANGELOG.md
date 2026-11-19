@@ -2,6 +2,14 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.8.0
+
+- `prestashopheaven/build-tools` 1.8.0: the Bing IndexNow retro (proposals 2, 3, 5, 6, 7, 14, 15): TST-07 counts only real
+  dispatches in code (also a named constructor), the verify gate wants every acceptance scenario named by a test
+  method, the multistore form check also fills email inputs, the smoke checks match PHP error output instead of the
+  words, the release gate names the sales-sync pin step, publish fetches the tags before the release check, and
+  publish demo warms the home page before its test.
+
 ## 1.7.1
 
 - Re-release of the 1.6.2 change above 1.7.0 (v1.6.2 was tagged after v1.7.0, so Composer picked 1.7.0 without it).

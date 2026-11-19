@@ -404,6 +404,18 @@ function factory_stage_problems(string $repoDir, string $stage): array
                     $problems[] = "Definition of done: $name is {$step['state']} (" . dod_command($name, $dod['module']) . ').';
                 }
             }
+            // Every acceptance scenario is named by a test where it counts: a test method's docblock or name.
+            $moduleDir = dod_module_dir($repoDir);
+            if ($moduleDir !== null) {
+                require_once __DIR__ . '/test-check.php';
+                $named = testAcceptanceIds($moduleDir . '/tests');
+                foreach (is_array((factory_json($repoDir, 'spec.json') ?? [])['acceptance'] ?? null) ? factory_json($repoDir, 'spec.json')['acceptance'] : [] as $case) {
+                    $id = is_array($case) ? (string) ($case['id'] ?? '') : '';
+                    if ($id !== '' && !isset($named[$id])) {
+                        $problems[] = "Acceptance scenario $id is not named by a test method (its docblock or name testA<n>...); a class docblock does not count.";
+                    }
+                }
+            }
             $review = factory_json($repoDir, 'reviews/verify.json');
             if ($review === null || ($review['verdict'] ?? '') !== 'approved') {
                 $problems[] = 'The reviewer has not approved the code: run the reviewer agent and record its verdict (ps-module factory review verify).';
@@ -522,6 +534,17 @@ function factory_release_problems(array $status, array $spec): array
         }
     }
     $states = array_map(static fn (mixed $job): string => is_array($job) ? (string) ($job['status'] ?? '?') : '?', $jobs);
+    if (in_array('waiting', $states, true)) {
+        // A new product is not pinned yet: heavensalessync waits for a person to confirm the first zip (pin).
+        $productId = 0;
+        foreach ($jobs as $job) {
+            $productId = $productId ?: (int) (is_array($job) ? ($job['product_id'] ?? 0) : 0);
+        }
+        $productId = $productId ?: (int) ($status['sales']['product_id'] ?? 0);
+        $product = $productId > 0 ? "Product #$productId" : 'The product';
+
+        return ["The sales shop waits for the pin of a new product: confirm once in its back office (Modules > PrestaHaven Sales Sync) that \"$product gets $label\"; the zip follows within seconds."];
+    }
 
     return ["The sales shop has not received the zip of $label yet (sales-sync jobs: " . ($states === [] ? 'none' : implode(', ', $states)) . '); heavensalessync polls every 15 minutes.'];
 }

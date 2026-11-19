@@ -1422,6 +1422,13 @@ function publish_release_guard(array $ctx, bool $force): void
     $git = 'git -C ' . escapeshellarg($ctx['repo']) . ' tag -l ' . escapeshellarg('v' . $ctx['version']);
     ps_vcmd($git);
     $tag = trim((string) shell_exec($git), " \n\r\t\v\0");
+    if ($tag === '') {
+        // The release workflow makes the tag on GitHub: fetch the tags before calling the version unreleased.
+        $fetch = 'git -C ' . escapeshellarg($ctx['repo']) . ' fetch --tags --quiet origin 2>' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null');
+        ps_vcmd($fetch);
+        shell_exec($fetch);
+        $tag = trim((string) shell_exec($git), " \n\r\t\v\0");
+    }
     ps_vlog('release tag v' . $ctx['version'] . ': ' . ($tag !== '' ? 'found' : 'missing'));
     if ($tag === '') {
         throw new RuntimeException("version {$ctx['version']} is not released (no tag v{$ctx['version']}). Publish after the release, or use --force.");
