@@ -566,14 +566,40 @@ function msBackOfficeLogin(Shop $shop): array|string
         return "Back-office login failed (HTTP $code, landed on $dashboardUrl).";
     }
     // Modules > Configure redirects (getContent()) to the module's own page.
-    [$status, , $url] = curlRequest($admin . '/improve/modules/manage/action/configure/' . $config['module'] . '?_token=' . $m[1], $jar);
+    [$status, $html, $url] = curlRequest($admin . '/improve/modules/manage/action/configure/' . $config['module'] . '?_token=' . $m[1], $jar);
     if ($status !== 200) {
         @unlink($jar);
 
         return "Configuration page: HTTP $status ($url)";
     }
+    $settings = msSettingsPageLink($html, $url, (string) $config['module']);
+    if ($settings !== null) {
+        ps_vlog("multistore form: the Configure button opens a page without a settings form; using its settings page $settings");
+        $url = $settings;
+    }
 
     return [$jar, $url];
+}
+
+/**
+ * When the page the Configure button opens has no settings form (a list, like the payment icons of
+ * heavenfooterpaymenticons), the address of the module's own settings page it links to: a link to
+ * /modules/<module>/settings or /modules/<module>/configuration. Null when the page has a settings form or no such link.
+ */
+function msSettingsPageLink(string $html, string $final, string $module): ?string
+{
+    if (is_array(msParseFormPage($html, $final))) {
+        return null;
+    }
+    if (!preg_match('#href="([^"]*/modules/' . preg_quote($module, '#') . '/(?:settings|configuration)\b[^"]*)"#i', $html, $m)) {
+        return null;
+    }
+    $link = html_entity_decode($m[1]);
+    if (str_starts_with($link, '/')) {
+        $link = (string) preg_replace('#^(https?://[^/]+).*$#', '$1', $final) . $link;
+    }
+
+    return $link;
 }
 
 /**
@@ -617,6 +643,10 @@ function msParseFormPage(string $html, string $final): array|string
     preg_match_all('#<form\b([^>]*)>(.*?)</form>#is', $html, $forms, PREG_SET_ORDER);
     $form = null;
     foreach ($forms as $candidate) {
+        // The filters of a grid (<form id="<grid>_filter_form">) are no settings form, even with a CSRF field.
+        if (preg_match('/\bid="[^"]*_filter_form"/', $candidate[1])) {
+            continue;
+        }
         if (preg_match('/name="[^"]+\[_token\]"/', $candidate[2])) {
             $form = $candidate;
             break;

@@ -195,6 +195,27 @@ final class MultistoreFormParserTest extends TestCase
         self::assertSame('72', msFormMarker('shop', true, 's2', false, [0, 1]), 'A range too small for three values keeps the default markers.');
     }
 
+    public function testAGridFilterFormIsNoSettingsForm(): void
+    {
+        $grid = '<form id="heavenfoo_icon_filter_form" method="post" action="/admin-dev/index.php/modules/heavenfoo/icons">'
+            . '<input type="text" name="heavenfoo_icon[name]" value="" /><input type="hidden" name="heavenfoo_icon[_token]" value="g" /></form>';
+
+        self::assertSame('no Symfony form found', msParseFormPage($grid, self::PAGE));
+        $page = msParseFormPage($grid . $this->form('<input type="text" name="form[a]" value="" />'), self::PAGE);
+        self::assertIsArray($page);
+        self::assertSame(['form[a]'], $page['text']);
+    }
+
+    public function testAListPageLeadsToTheSettingsPageItLinksTo(): void
+    {
+        $list = '<a class="btn" href="/admin-dev/index.php/modules/heavenfoo/settings?_token=abc&amp;x=1">Settings</a>'
+            . '<form id="heavenfoo_icon_filter_form"><input name="heavenfoo_icon[_token]" value="g" /></form>';
+
+        self::assertSame('http://localhost:33000/admin-dev/index.php/modules/heavenfoo/settings?_token=abc&x=1', msSettingsPageLink($list, self::PAGE, 'heavenfoo'));
+        self::assertNull(msSettingsPageLink($this->form('<input type="text" name="form[a]" value="" />') . $list, self::PAGE, 'heavenfoo'), 'A page with a settings form is tested itself.');
+        self::assertNull(msSettingsPageLink('<a href="/admin-dev/index.php/modules/other/settings">x</a>', self::PAGE, 'heavenfoo'));
+    }
+
     public function testErrorBoxesThePageShowsBeforeSavingAreKnown(): void
     {
         $html = '<div class="alert alert-danger" role="alert"><p>Sending at the end of the request   has risks.</p></div>'

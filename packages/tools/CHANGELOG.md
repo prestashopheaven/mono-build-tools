@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.2] - 2026-11-21
+
+### Opgelost
+- De multistore-controle van het configuratieformulier nam het filterformulier van een grid voor het
+  instellingenformulier (`<form id="<grid>_filter_form">`; heavenfooterpaymenticons, waar Configureren de lijst met
+  iconen opent): filterformulieren tellen niet meer mee, en opent Configureren een pagina zonder instellingenformulier,
+  dan volgt de controle de link naar `/modules/<module>/settings` of `/configuration` op die pagina.
+
 ## [1.9.1] - 2026-11-21
 
 ### Opgelost

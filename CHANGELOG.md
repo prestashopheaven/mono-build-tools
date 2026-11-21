@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.9.2
+
+- `prestashopheaven/build-tools` 1.9.2: the multistore form check skips grid filter forms and, when Configure opens a
+  list (heavenfooterpaymenticons), follows its link to the module's settings page.
+
 ## 1.9.1
 
 - `prestashopheaven/build-tools` 1.9.1: the multistore form check keeps numeric markers inside `min`/`max`, counts a
