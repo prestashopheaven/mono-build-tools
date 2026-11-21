@@ -2,6 +2,12 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.9.1
+
+- `prestashopheaven/build-tools` 1.9.1: the multistore form check keeps numeric markers inside `min`/`max`, counts a
+  save that stored nothing as refused (the next field is tried) and ignores red alerts the page already showed before
+  saving (heavencmsblog and heavenbingindexnow failed it after the move to 1.9).
+
 ## 1.9.0
 
 - `prestashopheaven/build-tools` 1.9.0: `publish shop` keeps the whole sales-shop product up to date (George,

@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.9.1] - 2026-11-21
+
+### Opgelost
+- De multistore-controle van het configuratieformulier (`shops run`, ronde multistore) faalde sinds 1.6.1/1.8.0 op
+  modules die eerder groen waren (gevonden bij de overstap van alle modules naar 1.9, 2026-11-21): een getalveld met
+  `min`/`max` kreeg 71..73 (heavencmsblog: 1-50) en de pagina bewaarde niets zonder foutmelding; een rode melding die
+  de pagina altijd toont (heavenbingindexnow: het risico van versturen aan het eind van het verzoek) gold als fout van
+  het opslaan. Nu: getalmarkers binnen `min`/`max` (max, max - 1, max - 2), een opslag die niets bewaart telt als
+  geweigerd (het volgende veld wordt geprobeerd), en rode meldingen die er vóór het opslaan al stonden tellen niet.
+
 ## [1.9.0] - 2026-11-19
 
 ### Toegevoegd

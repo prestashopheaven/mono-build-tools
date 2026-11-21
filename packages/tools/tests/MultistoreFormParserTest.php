@@ -179,4 +179,31 @@ final class MultistoreFormParserTest extends TestCase
         self::assertSame('ms-bo-s2.', msFormMarker('shop', false, 's2'));
         self::assertTrue(msSameValue('ms-bo-s2@example.com', msFormMarker('shop', false, 's2', true), false));
     }
+
+    public function testANumberFieldKeepsItsRangeAndTheMarkersFitIt(): void
+    {
+        $page = msParseFormPage($this->form(
+            '<input type="number" name="form[post_limit]" min="1" max="50" value="10" />'
+            . '<input type="number" name="form[days]" value="365" />'
+        ), self::PAGE);
+
+        self::assertIsArray($page);
+        self::assertSame(['form[post_limit]' => [1, 50]], $page['range']);
+        self::assertSame(['50', '49', '48'], [msFormMarker('all', true, 'all', false, [1, 50]), msFormMarker('shop', true, 's2', false, [1, 50]), msFormMarker('group', true, 'g2', false, [1, 50])]);
+        self::assertSame(['71', '72', '73'], [msFormMarker('all', true), msFormMarker('shop', true, 's2'), msFormMarker('group', true, 'g2')]);
+        self::assertSame('71', msFormMarker('all', true, 'all', false, [0, 1000]), 'A range that holds 71..73 keeps them.');
+        self::assertSame('72', msFormMarker('shop', true, 's2', false, [0, 1]), 'A range too small for three values keeps the default markers.');
+    }
+
+    public function testErrorBoxesThePageShowsBeforeSavingAreKnown(): void
+    {
+        $html = '<div class="alert alert-danger" role="alert"><p>Sending at the end of the request   has risks.</p></div>'
+            . $this->form('<input type="text" name="form[a]" value="" />');
+        $page = msParseFormPage($html, self::PAGE);
+
+        self::assertIsArray($page);
+        self::assertSame(['Sending at the end of the request has risks.'], $page['alerts']);
+        self::assertSame([], msDangerAlerts('<div class="alert alert-success">Saved</div><div class="alert alert-danger"> </div>'));
+        self::assertSame(['A', 'B'], msDangerAlerts('<div class="alert-danger">A</div><div class="x alert-danger y">B</div>'));
+    }
 }

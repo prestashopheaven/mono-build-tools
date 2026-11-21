@@ -457,19 +457,24 @@ function msBackOfficeForm(Shop $shop, int $shop2, int $group2): array
     }
     // The first text field whose value the form accepts: a field with its own validation (an email address, a
     // threshold below another) refuses the marker, and a refused save writes nothing, so the next field is tried.
-    $picked = msPickTextField($page['text'], static function (string $field) use ($jar, $page): ?string {
-        $marker = msFormMarker('all', msIsNumber((string) ($page['fields'][$field] ?? '')), 'all', in_array($field, $page['email'] ?? [], true));
+    $picked = msPickTextField($page['text'], static function (string $field) use ($jar, $page, $shop): ?string {
+        $marker = msFormMarker('all', msIsNumber((string) ($page['fields'][$field] ?? '')), 'all', in_array($field, $page['email'] ?? [], true), $page['range'][$field] ?? null);
         ps_vlog("multistore form: trying field $field, all shops value $marker");
         $fields = $page['fields'];
         $fields[$field] = $marker;
+        $error = msSubmit($jar, $page, $fields);
+        if ($error === null && msRowsWithValue($shop, $marker) === []) {
+            $error = "the form stored nothing for $field (it ignored the value $marker without an error on the page)";
+        }
 
-        return msSubmit($jar, $page, $fields);
+        return $error;
     });
     $textField = $picked['field'] ?? $page['text'][0];
     $save = $picked['error'];
     $numeric = msIsNumber((string) ($page['fields'][$textField] ?? ''));
     $email = in_array($textField, $page['email'] ?? [], true);
-    $allMarker = msFormMarker('all', $numeric, 'all', $email);
+    $range = $page['range'][$textField] ?? null;
+    $allMarker = msFormMarker('all', $numeric, 'all', $email, $range);
     ps_vlog("multistore form: testing field $textField (" . ($numeric ? 'numeric' : 'text') . "), all shops value $allMarker; refused: " . json_encode($picked['refused']));
     $rows = msRowsWithValue($shop, $allMarker);
     if ($save !== null) {
@@ -495,7 +500,7 @@ function msBackOfficeForm(Shop $shop, int $shop2, int $group2): array
             $problems[] = "$label context: no multistore checkbox $checkbox next to $textField (MS-05: getParent() = MultistoreConfigurationType, 'multistore_configuration_key' per field)";
             break;
         }
-        $marker = msFormMarker($scope[0] === 's' ? 'shop' : 'group', $numeric, $scope, $email);
+        $marker = msFormMarker($scope[0] === 's' ? 'shop' : 'group', $numeric, $scope, $email, $range);
         ps_vlog("multistore form: $label context ($context), checkbox ticked, value $marker");
         $fields = $page['fields'];
         $fields[$checkbox] = $page['checkboxes'][$checkbox];
@@ -625,7 +630,7 @@ function msParseFormPage(string $html, string $final): array|string
     if (str_starts_with($target, '/')) {
         $target = (string) preg_replace('#^(https?://[^/]+).*$#', '$1', $final) . $target;
     }
-    $page = ['action' => $target, 'fields' => [], 'checkboxes' => [], 'text' => []];
+    $page = ['action' => $target, 'fields' => [], 'checkboxes' => [], 'text' => [], 'range' => [], 'alerts' => msDangerAlerts($html)];
     // An input is one tag; only a textarea or a select has content up to its own end tag. (An optional content group
     // after every tag swallowed the inputs up to the next </select>: the field after a multistore checkbox was lost.)
     preg_match_all('/<(input)\b([^>]*)>|<(textarea|select)\b([^>]*)>(.*?)<\/\3\s*>/is', $form[2], $tags, PREG_SET_ORDER);
@@ -664,6 +669,10 @@ function msParseFormPage(string $html, string $final): array|string
             if ($type === 'email') {
                 $page['email'][] = $fieldName;
             }
+            // min/max of a number field: the numeric markers must fit, or the form refuses them (cms-blog: 1-50).
+            if (preg_match('/\bmin="(-?\d+)"/', $attrs, $min) && preg_match('/\bmax="(-?\d+)"/', $attrs, $max)) {
+                $page['range'][$fieldName] = [(int) $min[1], (int) $max[1]];
+            }
         }
         if ($disabled) {
             continue; // browsers do not send disabled fields
@@ -688,14 +697,21 @@ function msIsNumber(string $value): bool
  *
  * @param string $context 'all', 'shop' or 'group'
  * @param string $scope scope label of the shop or group ('s2', 'g2') for the text marker
+ * @param array{int, int}|null $range min and max of a number field (its min/max attributes), when it has them
  */
-function msFormMarker(string $context, bool $numeric, string $scope = 'all', bool $email = false): string
+function msFormMarker(string $context, bool $numeric, string $scope = 'all', bool $email = false, ?array $range = null): string
 {
     if ($email) {
         return 'ms-bo-' . $scope . '@example.com';
     }
     if ($numeric) {
-        return ['all' => '71', 'shop' => '72', 'group' => '73'][$context];
+        $offset = ['all' => 0, 'shop' => 1, 'group' => 2][$context];
+        // 71..73 when the field allows them; else the top of its range (max, max - 1, max - 2), still three values.
+        if ($range !== null && (73 > $range[1] || 71 < $range[0]) && $range[1] - 2 >= $range[0]) {
+            return (string) ($range[1] - $offset);
+        }
+
+        return (string) (71 + $offset);
     }
 
     return 'ms-bo-' . $scope . '.';
@@ -763,8 +779,10 @@ function msSubmit(string $jar, array $page, array $fields): ?string
     if ($status !== 200) {
         return "HTTP $status ($final)";
     }
-    if (preg_match('/<div[^>]*class="[^"]*alert-danger[^"]*"[^>]*>(.*?)<\/div>/is', $html, $m)) {
-        return trim((string) preg_replace('/\s+/', ' ', strip_tags($m[1])), " \n\r\t\v\0");
+    foreach (msDangerAlerts($html) as $alert) {
+        if (!in_array($alert, $page['alerts'] ?? [], true)) {
+            return $alert;
+        }
     }
     if (preg_match('/class="[^"]*invalid-feedback[^"]*"[^>]*>(.*?)<\//is', $html, $m) && trim(strip_tags($m[1]), " \n\r\t\v\0") !== '') {
         return 'field error: ' . trim(strip_tags($m[1]), " \n\r\t\v\0");
@@ -778,6 +796,27 @@ function msSubmit(string $jar, array $page, array $fields): ?string
     }
 
     return null;
+}
+
+/**
+ * The texts of the red error boxes (alert-danger) of a page, whitespace collapsed. A box the configuration page always
+ * shows (a warning about a risky setting, heavenbingindexnow) is in the list of the page before saving, so msSubmit()
+ * does not take it for the error of a save.
+ *
+ * @return list<string>
+ */
+function msDangerAlerts(string $html): array
+{
+    preg_match_all('/<div[^>]*class="[^"]*alert-danger[^"]*"[^>]*>(.*?)<\/div>/is', $html, $m);
+    $alerts = [];
+    foreach ($m[1] as $text) {
+        $alert = trim((string) preg_replace('/\s+/', ' ', strip_tags($text)), " \n\r\t\v\0");
+        if ($alert !== '') {
+            $alerts[] = $alert;
+        }
+    }
+
+    return $alerts;
 }
 
 /**
