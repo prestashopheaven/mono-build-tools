@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.3] - 2026-11-21
+
+### Toegevoegd
+- `shops run|behat` geeft Behat de naam van de PrestaShop-container van de winkel mee in `PS_SHOP_CONTAINER`
+  (`psh-shops-s<n>` voor een slot van de gedeelde instantie, anders `<module>-ps<versie>-prestashop-1`): een context die
+  met `docker exec` PHP in de winkel draait (heavenproductstocksorting), vond de container van een slot niet.
+
 ## [1.9.2] - 2026-11-21
 
 ### Opgelost

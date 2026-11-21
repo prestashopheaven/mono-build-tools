@@ -519,6 +519,9 @@ final class Shop
         $baseUrl = "http://localhost:{$this->port}";
         ps_vlog("behat: $dir/behat.yml against $baseUrl (PS_BASE_URL and BEHAT_PARAMS base_url)");
         putenv("PS_BASE_URL=$baseUrl");
+        // The PrestaShop container of this shop, for contexts that run PHP in it (docker exec): a slot of the shared
+        // instance is the container psh-<pool>-s<n>, an own stack <module>-ps<version>-prestashop-1.
+        putenv('PS_SHOP_CONTAINER=' . ($this->slot !== null ? $this->project : $this->project . '-prestashop-1'));
         // Overrides base_url from behat.yml for every context.
         putenv('BEHAT_PARAMS=' . json_encode(['extensions' => ['Behat\\MinkExtension' => ['base_url' => $baseUrl]]]));
         $code = runCaptured(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$dir/vendor/bin/behat") . ' --config=' . escapeshellarg("$dir/behat.yml") . ' --no-colors 2>&1', $lines);

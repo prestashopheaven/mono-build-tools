@@ -2,6 +2,11 @@
 
 All packages of this monorepo share one version. Per package details: its own `CHANGELOG.md`.
 
+## 1.9.3
+
+- `prestashopheaven/build-tools` 1.9.3: Behat gets the shop's PrestaShop container in `PS_SHOP_CONTAINER` (a slot of the
+  shared instance has no compose container name).
+
 ## 1.9.2
 
 - `prestashopheaven/build-tools` 1.9.2: the multistore form check skips grid filter forms and, when Configure opens a
